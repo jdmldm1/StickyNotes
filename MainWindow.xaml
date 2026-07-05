@@ -38,14 +38,27 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Note Title -->
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DisplayTitle}"
                                Foreground="{Binding CardTextBrush}" FontSize="13" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
 
+                    <!-- Favorite/Pin toggle — always visible so favorited notes are easy to spot at a glance -->
+                    <Button Grid.Row="0" Grid.Column="1" Click="FavoriteButton_Click" Tag="{Binding Id}" ToolTip="{Binding FavoriteToolTip}"
+                            Background="Transparent" BorderThickness="0" Foreground="{Binding FavoriteBrush}"
+                            Width="22" Height="22" FontSize="14" Cursor="Hand" Margin="0,0,4,0" VerticalAlignment="Center">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="11"/>
+                            </Style>
+                        </Button.Resources>
+                        <TextBlock Text="{Binding FavoriteIcon}" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+
                     <!-- Quick Open (URL / Attachment) — always visible when applicable -->
-                    <Button Grid.Row="0" Grid.Column="1" Click="QuickOpenButton_Click" ToolTip="{Binding QuickOpenToolTip}"
+                    <Button Grid.Row="0" Grid.Column="2" Click="QuickOpenButton_Click" ToolTip="{Binding QuickOpenToolTip}"
                             Visibility="{Binding QuickOpenVisibility}"
                             Background="#26FFFFFF" BorderThickness="0" Foreground="#ffffff"
                             Width="22" Height="22" FontSize="11" Cursor="Hand" Margin="0,0,6,0" VerticalAlignment="Center">
@@ -58,7 +71,7 @@
                     </Button>
 
                     <!-- Hover Action Icons Panel -->
-                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <StackPanel Grid.Row="0" Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -87,12 +100,12 @@
                     </StackPanel>
 
                     <!-- Text Snippet -->
-                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Snippet}" 
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="4" Text="{Binding Snippet}" 
                                Foreground="{Binding CardTextBrush}" FontSize="12" Margin="0,6,0,0" 
                                TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Opacity="0.8" MaxHeight="60"/>
 
                     <!-- Task Progress Bar -->
-                    <Grid Grid.Row="2" Grid.ColumnSpan="3" Margin="0,8,0,0" Visibility="{Binding TaskProgressVisibility}">
+                    <Grid Grid.Row="2" Grid.ColumnSpan="4" Margin="0,8,0,0" Visibility="{Binding TaskProgressVisibility}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -102,13 +115,13 @@
                     </Grid>
 
                     <!-- Thumbnail Image (if exists) -->
-                    <Border Grid.Row="3" Grid.ColumnSpan="3" MaxHeight="60" CornerRadius="4" ClipToBounds="True" 
+                    <Border Grid.Row="3" Grid.ColumnSpan="4" MaxHeight="60" CornerRadius="4" ClipToBounds="True" 
                             Margin="0,8,0,0" HorizontalAlignment="Left" Visibility="{Binding ImageVisibility}">
                         <Image Source="{Binding ThumbnailSource}" Stretch="Uniform"/>
                     </Border>
 
                     <!-- Note Tags -->
-                    <TextBlock Grid.Row="4" Grid.ColumnSpan="3" Text="{Binding TagsList}" 
+                    <TextBlock Grid.Row="4" Grid.ColumnSpan="4" Text="{Binding TagsList}" 
                                Foreground="{Binding CardTextBrush}" FontSize="9" Margin="0,8,0,0" Opacity="0.6"/>
                 </Grid>
             </Border>
@@ -170,24 +183,48 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- New Note Button (primary CTA) -->
-                    <Button Grid.Row="0" Click="NewNoteButton_Click" ToolTip="New Note (Win+Alt+N)" Height="38" Cursor="Hand" BorderThickness="0">
-                        <Button.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                <GradientStop Color="#0066cc" Offset="0"/>
-                                <GradientStop Color="#0099ff" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Button.Background>
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="8"/>
-                            </Style>
-                        </Button.Resources>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <TextBlock Text="✚" FontSize="15" Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="New Note" FontSize="12" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
+                    <!-- New Note Button (primary CTA) + template picker -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Click="NewNoteButton_Click" ToolTip="New Note (Win+Alt+N)" Height="38" Cursor="Hand" BorderThickness="0">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#0066cc" Offset="0"/>
+                                    <GradientStop Color="#0099ff" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="8"/>
+                                </Style>
+                            </Button.Resources>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="✚" FontSize="15" Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="New Note" FontSize="12" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Template picker (split button) -->
+                        <Button x:Name="TemplateButton" Grid.Column="2" Click="TemplateButton_Click" ToolTip="New note from template" Width="38" Height="38" Cursor="Hand" BorderThickness="0">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#2d2d44" Offset="0"/>
+                                    <GradientStop Color="#3a3a5a" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="8"/>
+                                </Style>
+                            </Button.Resources>
+                            <TextBlock Text="▾" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                    </Grid>
 
                     <!-- Secondary Actions Row -->
                     <Grid Grid.Row="2">
@@ -317,8 +354,9 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    
+
                     <TextBox x:Name="SearchTextBox" Grid.Column="0" TextChanged="SearchTextBox_TextChanged" Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="0" CaretBrush="White">
                         <TextBox.Resources>
                             <Style TargetType="Border">
@@ -339,8 +377,17 @@
                         </TextBlock.Style>
                     </TextBlock>
 
+                    <!-- Advanced/Spotlight search (tag+category+time filters, snippets). Same feature as Win+Alt+Space. -->
+                    <Button Grid.Column="1" x:Name="SpotlightButton" Content="🔎" Click="SpotlightButton_Click" ToolTip="Advanced search (Win+Alt+Space)" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="13" BorderThickness="0" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+
                     <!-- AI Auto Organize Button -->
-                    <Button Grid.Column="1" x:Name="AutoOrganizeButton" Content="🪄 Auto Organize" Click="AutoOrganizeButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="11" BorderThickness="0" Cursor="Hand">
+                    <Button Grid.Column="2" x:Name="AutoOrganizeButton" Content="🪄 Auto Organize" Click="AutoOrganizeButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="11" BorderThickness="0" Cursor="Hand">
                         <Button.Resources>
                             <Style TargetType="Border">
                                 <Setter Property="CornerRadius" Value="6"/>

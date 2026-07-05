@@ -1,7 +1,7 @@
 <Window x:Class="StickyNotes__.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Settings" Height="680" Width="420"
+        Title="Settings" Height="760" Width="420"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         MouseDown="Window_MouseDown">
@@ -32,6 +32,9 @@
                     <RowDefinition Height="Auto"/> <!-- Row 5: Docker Status -->
                     <RowDefinition Height="Auto"/> <!-- Row 6: UI Customization Splitter -->
                     <RowDefinition Height="Auto"/> <!-- Row 7: Opacity Slider Row -->
+                    <RowDefinition Height="Auto"/> <!-- Row 8: Data Backup Splitter -->
+                    <RowDefinition Height="Auto"/> <!-- Row 9: Backup/Restore Buttons -->
+                    <RowDefinition Height="Auto"/> <!-- Row 10: Backup Status -->
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130"/>
@@ -92,9 +95,40 @@
                             ValueChanged="OpacitySlider_ValueChanged"
                             VerticalAlignment="Center"
                             Foreground="#0084ff"/>
-                    <TextBlock x:Name="OpacityLabel" Grid.Column="1" Text="90%" Foreground="#e0e0e0" 
+                    <TextBlock x:Name="OpacityLabel" Grid.Column="1" Text="90%" Foreground="#e0e0e0"
                                VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="11"/>
                 </Grid>
+
+                <!-- Data Backup Splitter (Row 8) -->
+                <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                    <TextBlock Text="Backup &amp; Restore" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
+                    <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
+                    <TextBlock Text="Back up all your notes, images, and attachments to a single file, or restore from a previous backup. Restoring overwrites your current notes."
+                               Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                </StackPanel>
+
+                <!-- Backup/Restore Buttons (Row 9) -->
+                <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button x:Name="BackupNowButton" Content="Back Up Now" Click="BackupNowButton_Click"
+                            Height="30" Background="#0084ff" Foreground="#ffffff" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Padding="15,0" Margin="0,0,10,0">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                    <Button x:Name="RestoreBackupButton" Content="Restore from Backup..." Click="RestoreBackupButton_Click"
+                            Height="30" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" Padding="15,0">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                </StackPanel>
+
+                <!-- Backup Status (Row 10) -->
+                <TextBlock x:Name="BackupStatusTextBlock" Grid.Row="10" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
             </Grid>
 
             <!-- Buttons -->

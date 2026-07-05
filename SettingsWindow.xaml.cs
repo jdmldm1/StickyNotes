@@ -153,6 +153,79 @@ namespace StickyNotes__
             }
         }
 
+        private void BackupNowButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Back Up StickyNotes++",
+                Filter = "StickyNotes++ Backup (*.snbackup)|*.snbackup",
+                FileName = $"StickyNotes++_Backup_{DateTime.Now:yyyy-MM-dd}.snbackup"
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                BackupNowButton.IsEnabled = false;
+                BackupHelper.CreateBackup(dialog.FileName);
+                BackupStatusTextBlock.Foreground = System.Windows.Media.Brushes.LightGreen;
+                BackupStatusTextBlock.Text = $"Backup saved to {dialog.FileName}";
+            }
+            catch (Exception ex)
+            {
+                BackupStatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
+                BackupStatusTextBlock.Text = "Backup failed: " + ex.Message;
+            }
+            finally
+            {
+                BackupNowButton.IsEnabled = true;
+            }
+        }
+
+        private void RestoreBackupButton_Click(object sender, RoutedEventArgs e)
+        {
+            var confirm = MessageBox.Show(
+                "Restoring will replace all of your current notes, images, and attachments with the contents of the backup. This cannot be undone. Continue?",
+                "Restore from Backup", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Restore StickyNotes++ Backup",
+                Filter = "StickyNotes++ Backup (*.snbackup)|*.snbackup|All files (*.*)|*.*"
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                RestoreBackupButton.IsEnabled = false;
+                BackupHelper.RestoreBackup(dialog.FileName);
+                BackupStatusTextBlock.Foreground = System.Windows.Media.Brushes.LightGreen;
+                BackupStatusTextBlock.Text = "Backup restored successfully.";
+
+                if (Owner is MainWindow mainWin)
+                {
+                    mainWin.RefreshNotesList();
+                    mainWin.RefreshTagsFilter();
+                }
+                else if (Application.Current.MainWindow is MainWindow main)
+                {
+                    main.RefreshNotesList();
+                    main.RefreshTagsFilter();
+                }
+            }
+            catch (Exception ex)
+            {
+                BackupStatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
+                BackupStatusTextBlock.Text = "Restore failed: " + ex.Message;
+            }
+            finally
+            {
+                RestoreBackupButton.IsEnabled = true;
+            }
+        }
+
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
             // Restore original opacity on cancel

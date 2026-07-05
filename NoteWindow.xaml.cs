@@ -161,6 +161,7 @@ namespace StickyNotes__
             UpdateTagsDisplay();
             RefreshAttachmentsPanel();
             RefreshCategoryDropdown();
+            UpdateWordCount();
         }
 
         private void ApplyColor()
@@ -628,6 +629,24 @@ namespace StickyNotes__
             {
                 AutoDetectUrl(e);
             }
+
+            UpdateWordCount();
+        }
+
+        private void UpdateWordCount()
+        {
+            if (WordCountText == null) return;
+
+            string plainText = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd).Text;
+            int wordCount = plainText.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
+
+            if (wordCount == 0)
+            {
+                WordCountText.Text = "";
+                return;
+            }
+
+            WordCountText.Text = $"{wordCount} word{(wordCount == 1 ? "" : "s")}";
         }
 
         private void SaveTimer_Tick(object? sender, EventArgs e)

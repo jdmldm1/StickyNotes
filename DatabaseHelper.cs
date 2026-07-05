@@ -42,6 +42,7 @@ namespace StickyNotes__
         public double CanvasX { get; set; } = 50;
         public double CanvasY { get; set; } = 50;
         public string Category { get; set; } = "General";
+        public bool IsFavorite { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }
@@ -198,6 +199,13 @@ namespace StickyNotes__
                     // column is what search actually matches against, kept in sync by
                     // CreateNote/UpdateNote.
                     cmd.CommandText = "ALTER TABLE notes ADD COLUMN plain_text TEXT;";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
+                try
+                {
+                    cmd.CommandText = "ALTER TABLE notes ADD COLUMN is_favorite INTEGER DEFAULT 0;";
                     cmd.ExecuteNonQuery();
                 }
                 catch {}
@@ -426,7 +434,7 @@ namespace StickyNotes__
                     query += " WHERE " + string.Join(" AND ", conditions);
                 }
 
-                query += " ORDER BY n.is_pinned_desktop DESC, n.updated_at DESC";
+                query += " ORDER BY n.is_favorite DESC, n.is_pinned_desktop DESC, n.updated_at DESC";
                 cmd.CommandText = query;
 
                 using (var reader = cmd.ExecuteReader())
@@ -778,6 +786,7 @@ namespace StickyNotes__
                 CanvasX = GetDoubleSafe(reader, "canvas_x"),
                 CanvasY = GetDoubleSafe(reader, "canvas_y"),
                 Category = GetStringSafe(reader, "category"),
+                IsFavorite = GetBoolSafe(reader, "is_favorite"),
                 CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
                 UpdatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("updated_at")))
             };
@@ -806,6 +815,32 @@ namespace StickyNotes__
             catch
             {
                 return defaultValue;
+            }
+        }
+
+        private static bool GetBoolSafe(SqliteDataReader reader, string columnName, bool defaultValue = false)
+        {
+            try
+            {
+                int idx = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(idx) ? defaultValue : Convert.ToInt32(reader.GetValue(idx)) == 1;
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        public static void SetFavorite(int noteId, bool isFavorite)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE notes SET is_favorite = $fav WHERE id = $id;";
+                cmd.Parameters.AddWithValue("$fav", isFavorite ? 1 : 0);
+                cmd.Parameters.AddWithValue("$id", noteId);
+                cmd.ExecuteNonQuery();
             }
         }
 

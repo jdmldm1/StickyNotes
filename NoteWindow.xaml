@@ -226,6 +226,10 @@
                                           VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                           Background="Transparent"/>
 
+                <!-- Word count / reading time footer (overlays bottom-right of the editor) -->
+                <TextBlock x:Name="WordCountText" Grid.Row="0" Text="0 words" Foreground="#66ffffff" FontSize="9.5"
+                           HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,6" IsHitTestVisible="False"/>
+
                 <!-- AI Chat Panel (Row 1 - Collapsed by default) -->
                 <Border x:Name="AiChatPanel" Grid.Row="1" Height="160" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed">
                     <Grid>

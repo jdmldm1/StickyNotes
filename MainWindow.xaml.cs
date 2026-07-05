@@ -351,6 +351,11 @@ namespace StickyNotes__
             RefreshNotesList();
         }
 
+        private void SpotlightButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleSpotlight();
+        }
+
         private void ToggleSpotlight()
         {
             if (_spotlightWnd == null) return;
@@ -423,8 +428,8 @@ namespace StickyNotes__
                 notes = notes.Where(IsStaleNote).ToList();
             }
 
-            // Sort by UpdatedAt newest first
-            var sortedNotes = notes.OrderByDescending(n => n.UpdatedAt).ToList();
+            // Favorites always float to the top, then newest first within each group
+            var sortedNotes = notes.OrderByDescending(n => n.IsFavorite).ThenByDescending(n => n.UpdatedAt).ToList();
 
             var viewModels = sortedNotes.Select(n => new NoteCardViewModel
             {
@@ -435,6 +440,7 @@ namespace StickyNotes__
                 ImagePath = n.ImagePath,
                 Tags = DatabaseHelper.GetNoteTags(n.Id),
                 Category = n.Category ?? "General",
+                IsFavorite = n.IsFavorite,
                 QuickOpenItems = BuildQuickOpenItems(n)
             }).ToList();
 
@@ -959,6 +965,122 @@ namespace StickyNotes__
             ShowStatusToast($"Saved {attachedCount} file{(attachedCount == 1 ? "" : "s")} to a new note");
         }
 
+        private class NoteTemplateDef
+        {
+            public string Name = "";
+            public string Icon = "";
+            public string Category = "General";
+            public string Color = "yellow";
+            public string? Tag;
+            public List<(string Heading, bool Bulleted)> Sections = new List<(string, bool)>();
+        }
+
+        private static readonly List<NoteTemplateDef> NoteTemplates = new List<NoteTemplateDef>
+        {
+            new NoteTemplateDef { Name = "Blank Note", Icon = "📄" },
+            new NoteTemplateDef { Name = "Meeting Notes", Icon = "🗓️" }, // handled specially -- reuses CreateQuickMeetingNote
+            new NoteTemplateDef
+            {
+                Name = "1:1 Meeting", Icon = "🗣️", Category = "Meetings", Color = "blue", Tag = "1-1",
+                Sections = new List<(string, bool)> { ("Agenda:", true), ("Discussion Topics:", true), ("Action Items:", true), ("Follow-up:", true) }
+            },
+            new NoteTemplateDef
+            {
+                Name = "Daily Standup", Icon = "☀️", Category = "Meetings", Color = "green", Tag = "standup",
+                Sections = new List<(string, bool)> { ("Yesterday:", true), ("Today:", true), ("Blockers:", true) }
+            },
+            new NoteTemplateDef
+            {
+                Name = "Bug Report", Icon = "🐛", Category = "Work", Color = "pink", Tag = "bug",
+                Sections = new List<(string, bool)> { ("Summary:", false), ("Steps to Reproduce:", true), ("Expected Behavior:", false), ("Actual Behavior:", false), ("Environment:", false) }
+            },
+            new NoteTemplateDef
+            {
+                Name = "Brainstorm", Icon = "💡", Category = "Ideas", Color = "purple", Tag = "brainstorm",
+                Sections = new List<(string, bool)> { ("Topic:", false), ("Ideas:", true), ("Next Steps:", true) }
+            },
+        };
+
+        private void TemplateButton_Click(object sender, RoutedEventArgs e)
+        {
+            var menu = new ContextMenu();
+            foreach (var template in NoteTemplates)
+            {
+                var item = new MenuItem { Header = $"{template.Icon}  {template.Name}" };
+                item.Click += (s, args) => CreateNoteFromTemplate(template);
+                menu.Items.Add(item);
+            }
+            menu.PlacementTarget = TemplateButton;
+            menu.IsOpen = true;
+        }
+
+        private void CreateNoteFromTemplate(NoteTemplateDef template)
+        {
+            if (template.Name == "Blank Note")
+            {
+                CreateNewNote();
+                return;
+            }
+
+            if (template.Name == "Meeting Notes")
+            {
+                CreateQuickMeetingNote();
+                return;
+            }
+
+            var dialog = new InputDialog("Enter a title for this note:", template.Name) { Owner = this };
+            if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Answer))
+                return;
+
+            string title = $"{template.Name} - {dialog.Answer.Trim()}";
+            string contentXaml = BuildTemplateNoteXaml(title, template.Sections);
+
+            int noteId = DatabaseHelper.CreateNote(title, contentXaml, null, null, template.Color);
+
+            var note = DatabaseHelper.GetNote(noteId);
+            if (note != null)
+            {
+                note.Category = template.Category;
+                DatabaseHelper.UpdateNote(note);
+            }
+            if (!string.IsNullOrEmpty(template.Tag))
+            {
+                DatabaseHelper.AddTagToNote(noteId, template.Tag);
+            }
+
+            RefreshNotesList();
+            RefreshTagsFilter();
+            OpenNoteWindow(noteId);
+            ShowStatusToast($"Created {template.Name.ToLower()} note: {title}");
+        }
+
+        private static string BuildTemplateNoteXaml(string title, List<(string Heading, bool Bulleted)> sections)
+        {
+            var titleParagraph = new Paragraph(new Run(title)) { FontWeight = FontWeights.Bold, FontSize = 18, Margin = new Thickness(0, 0, 0, 8) };
+
+            var document = new FlowDocument(titleParagraph)
+            {
+                // See BuildMeetingNoteXaml for why Foreground/FontFamily must be set explicitly
+                // on any standalone FlowDocument not hosted in the live RichTextBox.
+                Foreground = Brushes.White,
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, sans-serif")
+            };
+
+            for (int i = 0; i < sections.Count; i++)
+            {
+                var (heading, bulleted) = sections[i];
+                document.Blocks.Add(MeetingSectionHeading(heading));
+                document.Blocks.Add(bulleted ? (Block)MeetingBulletPlaceholder() : new Paragraph(new Run("")));
+                if (i < sections.Count - 1)
+                {
+                    document.Blocks.Add(MeetingBlankSpacer());
+                }
+            }
+
+            var range = new TextRange(document.ContentStart, document.ContentEnd);
+            return NoteContentHelper.SaveRange(range);
+        }
+
         private void CreateQuickMeetingNote()
         {
             var dialog = new InputDialog("Enter the meeting title:", "New Meeting Note") { Owner = this };
@@ -1128,6 +1250,19 @@ namespace StickyNotes__
                             }
                         }
                     }
+                }
+            }
+        }
+
+        private void FavoriteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int id)
+            {
+                var note = DatabaseHelper.GetNote(id);
+                if (note != null)
+                {
+                    DatabaseHelper.SetFavorite(id, !note.IsFavorite);
+                    RefreshNotesList();
                 }
             }
         }
@@ -1592,7 +1727,12 @@ namespace StickyNotes__
         public string? ImagePath { get; set; }
         public List<string> Tags { get; set; } = new List<string>();
         public string Category { get; set; } = "General";
+        public bool IsFavorite { get; set; }
         public List<QuickOpenItem> QuickOpenItems { get; set; } = new List<QuickOpenItem>();
+
+        public string FavoriteIcon => IsFavorite ? "★" : "☆";
+        public Brush FavoriteBrush => IsFavorite ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xff, 0xc1, 0x07)) : new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x80, 0xff, 0xff, 0xff));
+        public string FavoriteToolTip => IsFavorite ? "Unpin favorite" : "Mark as favorite";
 
         public string DisplayTitle => string.IsNullOrEmpty(Title) ? "Sticky Note" : Title;
 
