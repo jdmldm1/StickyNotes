@@ -273,8 +273,11 @@ namespace StickyNotes__
             var saveAsTemplateItem = new MenuItem { Header = "Save as Template" };
             saveAsTemplateItem.Click += (s, args) =>
             {
+                SaveNoteContent();
                 DatabaseHelper.SetNoteIsTemplate(_noteId, true);
-                if (Owner is MainWindow main)
+                
+                var main = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
+                if (main != null)
                 {
                     main.ShowStatusToast("Saved as template ✅");
                 }

@@ -495,7 +495,7 @@ namespace StickyNotes__
                 return openWindow;
             }
 
-            var noteWindow = new NoteWindow(noteId);
+            var noteWindow = new NoteWindow(noteId) { Owner = this };
             noteWindow.Show();
             _openNoteWindows.Add(noteId, noteWindow);
             return noteWindow;
@@ -1202,7 +1202,46 @@ namespace StickyNotes__
 
         private void TemplateButton_Click(object sender, RoutedEventArgs e)
         {
-            OpenTemplatePicker();
+            var menu = new ContextMenu();
+            menu.Style = (Style)FindResource(typeof(ContextMenu));
+
+            // 1. Built-in templates
+            var builtInHeader = new MenuItem { Header = "Built-in Templates", IsEnabled = false, FontWeight = FontWeights.Bold };
+            menu.Items.Add(builtInHeader);
+
+            foreach (var template in NoteTemplates)
+            {
+                var item = new MenuItem { Header = $"{template.Icon}  {template.Name}" };
+                item.Click += (s, args) => CreateNoteFromTemplate(template);
+                menu.Items.Add(item);
+            }
+
+            // 2. User templates (if any)
+            var userTemplates = DatabaseHelper.ListTemplates();
+            if (userTemplates.Count > 0)
+            {
+                menu.Items.Add(new Separator());
+                var userHeader = new MenuItem { Header = "My Templates", IsEnabled = false, FontWeight = FontWeights.Bold };
+                menu.Items.Add(userHeader);
+
+                foreach (var note in userTemplates)
+                {
+                    string snippet = note.Title.Length > 22 ? note.Title.Substring(0, 20) + "…" : note.Title;
+                    var item = new MenuItem { Header = $"📝  {snippet}" };
+                    int nid = note.Id;
+                    item.Click += (s, args) => CreateNoteFromUserTemplate(nid);
+                    menu.Items.Add(item);
+                }
+            }
+
+            // 3. More/Manage option
+            menu.Items.Add(new Separator());
+            var moreItem = new MenuItem { Header = "📋  Manage Templates..." };
+            moreItem.Click += (s, args) => OpenTemplatePicker();
+            menu.Items.Add(moreItem);
+
+            menu.PlacementTarget = sender as UIElement;
+            menu.IsOpen = true;
         }
 
         private void OpenClipboardPicker()
