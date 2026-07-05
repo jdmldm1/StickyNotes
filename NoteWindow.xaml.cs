@@ -741,7 +741,60 @@ namespace StickyNotes__
             professionalItem.Click += async (s, args) => await ApplyAiFormatAsync("Rewrite this text to have a highly professional, polite, and clear business tone: ");
             menu.Items.Add(professionalItem);
 
+            menu.Items.Add(new Separator());
+
+            var actionItemsItem = new MenuItem { Header = "Extract Action Items" };
+            actionItemsItem.Click += async (s, args) => await ExtractActionItemsAsync();
+            menu.Items.Add(actionItemsItem);
+
             menu.IsOpen = true;
+        }
+
+        // Unlike the options above, this appends to the note rather than replacing it -- the
+        // point is to pull tasks out of a longer note (e.g. a meeting note) without losing the
+        // rest of what was written.
+        private async System.Threading.Tasks.Task ExtractActionItemsAsync()
+        {
+            TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
+            string plainText = range.Text.Trim();
+            if (string.IsNullOrEmpty(plainText)) return;
+
+            var oldCursor = this.Cursor;
+            this.Cursor = Cursors.Wait;
+            try
+            {
+                string prompt = "Extract any action items, to-dos, or follow-up tasks mentioned in the following text. " +
+                    "Respond with ONLY a JSON array of short task strings (no explanations, no markdown, no code fences). " +
+                    "If there are no action items, respond with an empty array [].\n\nText:\n" + plainText;
+
+                string aiOutput = await AiHelper.GenerateTextAsync(prompt);
+                var tasks = AiHelper.ParseJsonStringArray(aiOutput)
+                    .Where(t => !string.IsNullOrWhiteSpace(t))
+                    .ToList();
+
+                if (tasks.Count == 0)
+                {
+                    MessageBox.Show("No action items were found in this note.", "Extract Action Items", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var heading = new Paragraph(new Run("Action Items")) { FontWeight = FontWeights.Bold, FontSize = 13, Margin = new Thickness(0, 10, 0, 3) };
+                NoteRichTextBox.Document.Blocks.Add(heading);
+                foreach (var task in tasks)
+                {
+                    NoteRichTextBox.Document.Blocks.Add(new Paragraph(new Run(UncheckedGlyph + task.Trim())));
+                }
+
+                SaveNoteContent();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("AI extraction failed: " + ex.Message, "AI Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                this.Cursor = oldCursor;
+            }
         }
 
         private async System.Threading.Tasks.Task ApplyAiFormatAsync(string promptPrefix)

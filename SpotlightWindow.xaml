@@ -13,11 +13,12 @@
         <Grid Margin="15">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <!-- Search Header Row -->
-            <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -49,8 +50,15 @@
                 </Grid>
             </Grid>
 
+            <!-- Filter Row -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                <ComboBox x:Name="TagFilterCombo" Width="120" Margin="0,0,6,0" SelectionChanged="Filter_SelectionChanged"/>
+                <ComboBox x:Name="CategoryFilterCombo" Width="120" Margin="0,0,6,0" SelectionChanged="Filter_SelectionChanged"/>
+                <ComboBox x:Name="TimeFilterCombo" Width="120" SelectionChanged="Filter_SelectionChanged"/>
+            </StackPanel>
+
             <!-- Search Results List -->
-            <ListBox Grid.Row="1" x:Name="ResultsListBox" Background="Transparent" BorderThickness="0" 
+            <ListBox Grid.Row="2" x:Name="ResultsListBox" Background="Transparent" BorderThickness="0"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"
                      MouseDoubleClick="ResultsListBox_MouseDoubleClick">
                 <ListBox.ItemContainerStyle>

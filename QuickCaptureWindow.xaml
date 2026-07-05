@@ -1,0 +1,44 @@
+<Window x:Class="StickyNotes__.QuickCaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Quick Capture" Height="70" Width="480"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" Topmost="True"
+        Loaded="Window_Loaded" Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown">
+
+    <Border Background="#E6121212" BorderBrush="#33FFFFFF" BorderThickness="1.5" CornerRadius="12">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="25" ShadowDepth="0" Color="Black" Opacity="0.6"/>
+        </Border.Effect>
+        <Grid Margin="15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" x:Name="StatusIcon" Text="✏" FontSize="18" VerticalAlignment="Center" Margin="5,0,10,0" Foreground="#0084ff"/>
+
+            <Grid Grid.Column="1">
+                <TextBox x:Name="CaptureInput" Padding="8,8" FontSize="14" Background="#262626" Foreground="#ffffff" BorderThickness="0" CaretBrush="White">
+                    <TextBox.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="6"/>
+                        </Style>
+                    </TextBox.Resources>
+                </TextBox>
+                <TextBlock IsHitTestVisible="False" Text="Quick note... (Enter to save, Esc to cancel)" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="13">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text, ElementName=CaptureInput}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

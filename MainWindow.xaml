@@ -126,7 +126,8 @@
                 <RowDefinition Height="Auto"/> <!-- Row 3: Search Bar -->
                 <RowDefinition Height="Auto"/> <!-- Row 4: Tags Filter Bar -->
                 <RowDefinition Height="Auto"/> <!-- Row 5: Sort Options Row -->
-                <RowDefinition Height="*"/>    <!-- Row 6: Notes List / Clipboard ScrollViewer -->
+                <RowDefinition Height="Auto"/> <!-- Row 6: Stale Notes Digest Banner -->
+                <RowDefinition Height="*"/>    <!-- Row 7: Notes List / Clipboard ScrollViewer -->
             </Grid.RowDefinitions>
 
                 <!-- Title &amp; Settings Header (Row 0) -->
@@ -383,13 +384,30 @@
                     </Button>
                 </Grid>
 
-                <!-- Notes List (Row 6) -->
-                <ScrollViewer x:Name="NotesScrollViewer" Grid.Row="6" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <!-- Stale Notes Digest Banner (Row 6) -->
+                <Border x:Name="StaleNotesBanner" Grid.Row="6" Margin="0,0,0,12" Padding="10,8" CornerRadius="8"
+                        Background="#1affa500" BorderBrush="#ffa500" BorderThickness="1" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="StaleNotesText" Text="⏰ 0 notes have open tasks untouched for a while"
+                                   Foreground="#ffcc80" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Cursor="Hand" MouseLeftButtonUp="StaleNotesBanner_Click"/>
+                        <Button Grid.Column="1" Content="✕" Click="DismissStaleNotesBanner_Click" ToolTip="Dismiss for this session"
+                                Background="Transparent" BorderThickness="0" Foreground="#ffcc80"
+                                Width="20" Height="20" FontSize="10" Cursor="Hand" VerticalAlignment="Top" Margin="6,0,0,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Notes List (Row 7) -->
+                <ScrollViewer x:Name="NotesScrollViewer" Grid.Row="7" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel x:Name="NotesGroupPanel"/>
                 </ScrollViewer>
 
                 <!-- Clipboard List (Row 6 - Collapsed by default) -->
-                <ScrollViewer x:Name="ClipboardScrollViewer" Grid.Row="6" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
+                <ScrollViewer x:Name="ClipboardScrollViewer" Grid.Row="7" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
                     <ItemsControl x:Name="ClipboardItemsControl">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

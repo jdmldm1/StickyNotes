@@ -146,12 +146,19 @@ namespace StickyNotes__
             string prompt = $"Analyze the following text and generate 3 to 5 simple, lowercase tags representing the topics. Return ONLY a plain JSON string array of tags, for example: [\"database\", \"sql\", \"fix\"]. Do not write any explanations, markdown blocks, or other text. If the text has no clear topics, return an empty array.\n\nText: {text}";
             
             string response = await GenerateTextAsync(prompt);
+            return ParseJsonStringArray(response);
+        }
+
+        // Shared by AutoTagTextAsync and any other caller expecting the model to return
+        // a plain JSON string array -- models frequently wrap it in markdown fences or
+        // add stray prose, so this strips down to just the [ ... ] before parsing.
+        public static List<string> ParseJsonStringArray(string response)
+        {
             if (string.IsNullOrEmpty(response))
                 return new List<string>();
 
             try
             {
-                // Clean up markdown markers if any (like ```json ... ```)
                 string cleaned = response;
                 if (cleaned.Contains("[") && cleaned.Contains("]"))
                 {
@@ -160,15 +167,15 @@ namespace StickyNotes__
                     cleaned = cleaned.Substring(start, end - start);
                 }
 
-                var tags = JsonSerializer.Deserialize<List<string>>(cleaned);
-                if (tags != null)
+                var items = JsonSerializer.Deserialize<List<string>>(cleaned);
+                if (items != null)
                 {
-                    return tags;
+                    return items;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error parsing AI tags: " + ex.Message + " | Response was: " + response);
+                Console.WriteLine("Error parsing AI JSON array: " + ex.Message + " | Response was: " + response);
             }
             return new List<string>();
         }

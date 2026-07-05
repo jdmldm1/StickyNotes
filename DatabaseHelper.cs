@@ -190,9 +190,52 @@ namespace StickyNotes__
                 }
                 catch {}
 
+                try
+                {
+                    // Searchable plain-text mirror of `content`. Content is stored as Base64-encoded
+                    // XamlPackage (needed so embedded formatting round-trips correctly), which makes
+                    // a plain SQL LIKE against it useless for finding words in a note's body -- this
+                    // column is what search actually matches against, kept in sync by
+                    // CreateNote/UpdateNote.
+                    cmd.CommandText = "ALTER TABLE notes ADD COLUMN plain_text TEXT;";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
                 // One-time cleanup: scrub any \id=... metadata tags from previously imported notes
                 CleanupStickyNotesMetadataInDb(conn);
+
+                // Backfill plain_text for notes saved before that column existed.
+                BackfillPlainText(conn);
             }
+        }
+
+        private static void BackfillPlainText(SqliteConnection conn)
+        {
+            try
+            {
+                var toBackfill = new List<(int id, string content)>();
+                var selectCmd = conn.CreateCommand();
+                selectCmd.CommandText = "SELECT id, content FROM notes WHERE plain_text IS NULL;";
+                using (var reader = selectCmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        toBackfill.Add((reader.GetInt32(0), reader.IsDBNull(1) ? "" : reader.GetString(1)));
+                    }
+                }
+
+                foreach (var (id, content) in toBackfill)
+                {
+                    string plainText = NoteContentHelper.ExtractPlainText(content);
+                    var updateCmd = conn.CreateCommand();
+                    updateCmd.CommandText = "UPDATE notes SET plain_text = $plain_text WHERE id = $id;";
+                    updateCmd.Parameters.AddWithValue("$plain_text", plainText);
+                    updateCmd.Parameters.AddWithValue("$id", id);
+                    updateCmd.ExecuteNonQuery();
+                }
+            }
+            catch { /* Non-critical -- search just falls back to title/OCR matches for these rows */ }
         }
 
         private static void CleanupStickyNotesMetadataInDb(Microsoft.Data.Sqlite.SqliteConnection conn)
@@ -242,16 +285,17 @@ namespace StickyNotes__
                 conn.Open();
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    INSERT INTO notes (title, content, image_path, ocr_text, color)
-                    VALUES ($title, $content, $image_path, $ocr_text, $color);
+                    INSERT INTO notes (title, content, plain_text, image_path, ocr_text, color)
+                    VALUES ($title, $content, $plain_text, $image_path, $ocr_text, $color);
                     SELECT last_insert_rowid();
                 ";
                 cmd.Parameters.AddWithValue("$title", title);
                 cmd.Parameters.AddWithValue("$content", content);
+                cmd.Parameters.AddWithValue("$plain_text", NoteContentHelper.ExtractPlainText(content));
                 cmd.Parameters.AddWithValue("$image_path", (object?)imagePath ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$ocr_text", (object?)ocrText ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$color", color);
-                
+
                 return Convert.ToInt32(cmd.ExecuteScalar());
             }
         }
@@ -266,6 +310,7 @@ namespace StickyNotes__
                     UPDATE notes SET
                         title = $title,
                         content = $content,
+                        plain_text = $plain_text,
                         image_path = $image_path,
                         ocr_text = $ocr_text,
                         color = $color,
@@ -282,6 +327,7 @@ namespace StickyNotes__
                 ";
                 cmd.Parameters.AddWithValue("$title", note.Title);
                 cmd.Parameters.AddWithValue("$content", note.Content);
+                cmd.Parameters.AddWithValue("$plain_text", NoteContentHelper.ExtractPlainText(note.Content));
                 cmd.Parameters.AddWithValue("$image_path", (object?)note.ImagePath ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$ocr_text", (object?)note.OcrText ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$color", note.Color);
@@ -337,17 +383,17 @@ namespace StickyNotes__
             return null;
         }
 
-        public static List<Note> ListNotes(string? searchQuery = null, string? tagFilter = null)
+        public static List<Note> ListNotes(string? searchQuery = null, string? tagFilter = null, string? categoryFilter = null, DateTime? updatedSince = null)
         {
             var notes = new List<Note>();
             using (var conn = new SqliteConnection(GetConnectionString()))
             {
                 conn.Open();
                 var cmd = conn.CreateCommand();
-                
+
                 string query = "SELECT DISTINCT n.* FROM notes n";
                 var conditions = new List<string>();
-                
+
                 if (!string.IsNullOrEmpty(tagFilter))
                 {
                     query += " JOIN note_tags nt ON n.id = nt.note_id JOIN tags t ON nt.tag_id = t.id";
@@ -357,8 +403,22 @@ namespace StickyNotes__
 
                 if (!string.IsNullOrEmpty(searchQuery))
                 {
-                    conditions.Add("(n.title LIKE $search OR n.content LIKE $search OR n.ocr_text LIKE $search)");
+                    // plain_text is a searchable mirror of `content` (which is Base64-encoded
+                    // XamlPackage and not itself searchable) kept in sync by CreateNote/UpdateNote.
+                    conditions.Add("(n.title LIKE $search OR n.plain_text LIKE $search OR n.ocr_text LIKE $search)");
                     cmd.Parameters.AddWithValue("$search", $"%{searchQuery}%");
+                }
+
+                if (!string.IsNullOrEmpty(categoryFilter))
+                {
+                    conditions.Add("n.category = $category");
+                    cmd.Parameters.AddWithValue("$category", categoryFilter);
+                }
+
+                if (updatedSince != null)
+                {
+                    conditions.Add("n.updated_at >= $updated_since");
+                    cmd.Parameters.AddWithValue("$updated_since", updatedSince.Value.ToString("yyyy-MM-dd HH:mm:ss"));
                 }
 
                 if (conditions.Count > 0)

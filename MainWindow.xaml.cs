@@ -25,8 +25,12 @@ namespace StickyNotes__
         private Win32Helper.APPBARDATA _appBarData;
         private bool _isAppBarRegistered;
         private string? _selectedTagFilter;
+        private bool _showOnlyStale;
+        private bool _staleNotesDismissedThisSession;
+        private static readonly TimeSpan StaleNoteAge = TimeSpan.FromDays(3);
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private SpotlightWindow? _spotlightWnd;
+        private QuickCaptureWindow? _quickCaptureWnd;
         private string _sortOrder = "date"; // "date" or "category"
 
 
@@ -119,6 +123,48 @@ namespace StickyNotes__
             RefreshNotesList();
             RefreshTagsFilter();
             LoadSavedOpacity();
+            CheckStaleNotes();
+        }
+
+        // A note "has an open task" if it contains an unchecked checklist item -- see
+        // NoteWindow's UncheckedGlyph -- and hasn't been touched in a few days. Surfacing these
+        // closes the loop on notes that get filed under a checkbox and then never looked at again.
+        private static bool IsStaleNote(Note note)
+        {
+            if (DateTime.Now - note.UpdatedAt < StaleNoteAge) return false;
+            return NoteContentHelper.ExtractPlainText(note.Content).Contains('☐'); // ☐
+        }
+
+        private void CheckStaleNotes()
+        {
+            if (_staleNotesDismissedThisSession)
+            {
+                StaleNotesBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            int staleCount = DatabaseHelper.ListNotes(null, null).Count(IsStaleNote);
+            if (staleCount > 0)
+            {
+                StaleNotesText.Text = $"⏰ {staleCount} note{(staleCount == 1 ? "" : "s")} {(staleCount == 1 ? "has" : "have")} open tasks untouched for {StaleNoteAge.Days}+ days";
+                StaleNotesBanner.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                StaleNotesBanner.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void StaleNotesBanner_Click(object sender, MouseButtonEventArgs e)
+        {
+            _showOnlyStale = true;
+            RefreshNotesList();
+        }
+
+        private void DismissStaleNotesBanner_Click(object sender, RoutedEventArgs e)
+        {
+            _staleNotesDismissedThisSession = true;
+            StaleNotesBanner.Visibility = Visibility.Collapsed;
         }
 
         public void ApplySidebarOpacity(double opacity)
@@ -152,6 +198,7 @@ namespace StickyNotes__
             source.AddHook(WndProcHook);
 
             _spotlightWnd = new SpotlightWindow(this);
+            _quickCaptureWnd = new QuickCaptureWindow(this);
 
             // Snapping Right (AppBar)
             RegisterAppBar();
@@ -163,12 +210,14 @@ namespace StickyNotes__
             // Win+Alt+T for Save Browser Tabs (ID 9004)
             // Win+Alt+F for Save Files to a New Note (ID 9005)
             // Win+Alt+M for Quick Meeting Note (ID 9006)
+            // Win+Alt+Q for Quick Capture (ID 9007)
             Win32Helper.RegisterHotKey(wndHelper.Handle, 9001, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E); // 0x4E = 'N'
             Win32Helper.RegisterHotKey(wndHelper.Handle, 9002, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53); // 0x53 = 'S'
             Win32Helper.RegisterHotKey(wndHelper.Handle, 9003, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20); // 0x20 = Space
             Win32Helper.RegisterHotKey(wndHelper.Handle, 9004, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54); // 0x54 = 'T'
             Win32Helper.RegisterHotKey(wndHelper.Handle, 9005, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46); // 0x46 = 'F'
             Win32Helper.RegisterHotKey(wndHelper.Handle, 9006, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // 0x4D = 'M'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, 9007, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51); // 0x51 = 'Q'
 
             // Note: intentionally NOT enabling the Mica backdrop here. Mica composites its own
             // blurred/tinted wallpaper sample underneath the window, which fights with the sidebar
@@ -217,6 +266,11 @@ namespace StickyNotes__
                 else if (id == 9006)
                 {
                     CreateQuickMeetingNote();
+                    handled = true;
+                }
+                else if (id == 9007)
+                {
+                    ToggleQuickCapture();
                     handled = true;
                 }
             }
@@ -313,6 +367,22 @@ namespace StickyNotes__
             }
         }
 
+        private void ToggleQuickCapture()
+        {
+            if (_quickCaptureWnd == null) return;
+
+            if (_quickCaptureWnd.IsVisible)
+            {
+                _quickCaptureWnd.Hide();
+            }
+            else
+            {
+                _quickCaptureWnd.Show();
+                _quickCaptureWnd.Activate();
+                _quickCaptureWnd.FocusCapture();
+            }
+        }
+
         public void OpenNoteWindow(int noteId)
         {
             if (_openNoteWindows.TryGetValue(noteId, out NoteWindow? openWindow))
@@ -344,9 +414,14 @@ namespace StickyNotes__
 
             string searchQuery = SearchTextBox.Text.Trim();
             var notes = DatabaseHelper.ListNotes(
-                string.IsNullOrEmpty(searchQuery) ? null : searchQuery, 
+                string.IsNullOrEmpty(searchQuery) ? null : searchQuery,
                 _selectedTagFilter
             );
+
+            if (_showOnlyStale)
+            {
+                notes = notes.Where(IsStaleNote).ToList();
+            }
 
             // Sort by UpdatedAt newest first
             var sortedNotes = notes.OrderByDescending(n => n.UpdatedAt).ToList();
@@ -647,7 +722,7 @@ namespace StickyNotes__
             }
         }
 
-        private void RefreshTagsFilter()
+        public void RefreshTagsFilter()
         {
             TagsFilterPanel.Children.Clear();
 
@@ -663,7 +738,7 @@ namespace StickyNotes__
                 FontSize = 11,
                 Cursor = Cursors.Hand
             };
-            allButton.Click += (s, e) => { _selectedTagFilter = null; RefreshTagsFilter(); RefreshNotesList(); };
+            allButton.Click += (s, e) => { _selectedTagFilter = null; _showOnlyStale = false; RefreshTagsFilter(); RefreshNotesList(); };
             TagsFilterPanel.Children.Add(allButton);
 
             var tags = DatabaseHelper.ListAllTags();
@@ -684,6 +759,7 @@ namespace StickyNotes__
                 tagBtn.Click += (s, e) =>
                 {
                     _selectedTagFilter = currentTag;
+                    _showOnlyStale = false;
                     RefreshTagsFilter();
                     RefreshNotesList();
                 };
@@ -1098,6 +1174,7 @@ namespace StickyNotes__
             try
             {
                 _spotlightWnd?.Close();
+                _quickCaptureWnd?.Close();
             }
             catch {}
 
@@ -1109,6 +1186,10 @@ namespace StickyNotes__
             Win32Helper.UnregisterHotKey(wndHelper.Handle, 9001);
             Win32Helper.UnregisterHotKey(wndHelper.Handle, 9002);
             Win32Helper.UnregisterHotKey(wndHelper.Handle, 9003);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9004);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9005);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9006);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9007);
 
             // Stop clipboard timer
             _clipboardTimer?.Stop();
