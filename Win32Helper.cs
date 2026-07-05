@@ -102,6 +102,17 @@ namespace StickyNotes__
         public const uint MOD_SHIFT = 0x0004;
         public const uint MOD_WIN = 0x0008;
         public const uint MOD_NOREPEAT = 0x4000;
+
+        // Named hotkey IDs — used in both RegisterHotKey and WndProcHook.
+        // Changing an ID here automatically updates both registration and dispatch.
+        public const int HotkeyNewNote      = 9001;
+        public const int HotkeyScreenshot   = 9002;
+        public const int HotkeySpotlight    = 9003;
+        public const int HotkeyBrowserTabs  = 9004;
+        public const int HotkeySaveFiles    = 9005;
+        public const int HotkeyMeetingNote  = 9006;
+        public const int HotkeyQuickCapture = 9007;
+        public const int HotkeyGraph        = 9008; // Win+Alt+G — Tag Mind Graph
         
         public static void EnableMica(IntPtr hwnd, bool darkMode)
         {
@@ -118,5 +129,32 @@ namespace StickyNotes__
                 Console.WriteLine("Mica translucency setup failed: " + ex.Message);
             }
         }
+
+        // GDI Screen Capture -- used by CaptureWindow to BitBlt the screen into a bitmap.
+        [DllImport("gdi32.dll")]
+        public static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetDC(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        public static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int nWidth, int nHeight);
+
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+
+        [DllImport("gdi32.dll")]
+        public static extern bool DeleteDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        public static extern bool DeleteObject(IntPtr hObject);
+
+        public const int SRCCOPY = 0x00CC0020;
     }
 }

@@ -14,44 +14,13 @@ namespace StickyNotes__
 
         public static string GetOllamaUrl()
         {
-            try
-            {
-                if (System.IO.File.Exists(AppConfig.SettingsPath))
-                {
-                    string json = System.IO.File.ReadAllText(AppConfig.SettingsPath);
-                    using (JsonDocument doc = JsonDocument.Parse(json))
-                    {
-                        if (doc.RootElement.TryGetProperty("OllamaUrl", out JsonElement urlEl))
-                        {
-                            string url = urlEl.GetString() ?? "";
-                            if (!string.IsNullOrEmpty(url)) return url.TrimEnd('/');
-                        }
-                    }
-                }
-            }
-            catch {}
-            return "http://localhost:11434";
+            string url = SettingsService.Current.OllamaUrl;
+            return string.IsNullOrEmpty(url) ? "http://localhost:11434" : url.TrimEnd('/');
         }
 
         public static string GetOllamaModelSetting()
         {
-            try
-            {
-                if (System.IO.File.Exists(AppConfig.SettingsPath))
-                {
-                    string json = System.IO.File.ReadAllText(AppConfig.SettingsPath);
-                    using (JsonDocument doc = JsonDocument.Parse(json))
-                    {
-                        if (doc.RootElement.TryGetProperty("OllamaModel", out JsonElement modelEl))
-                        {
-                            string model = modelEl.GetString() ?? "";
-                            if (!string.IsNullOrEmpty(model)) return model.Trim();
-                        }
-                    }
-                }
-            }
-            catch {}
-            return "";
+            return SettingsService.Current.OllamaModel;
         }
 
         public static async Task<bool> IsOllamaRunningAsync()

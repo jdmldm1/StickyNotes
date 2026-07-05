@@ -22,6 +22,16 @@ namespace StickyNotes__
         private const string AllTagsOption = "All Tags";
         private const string AllCategoriesOption = "All Categories";
 
+        private static readonly List<(string Command, string Description, string Shortcut)> Commands = new()
+        {
+            ("/new",      "Create a new blank note",              "Win+Alt+N"),
+            ("/template", "Create a note from a template",        "─"),
+            ("/graph",    "Open the Tag Mind Graph",              "Win+Alt+G"),
+            ("/manager",  "Open the Note Manager",               "─"),
+            ("/snip",     "Take a region screenshot",            "Win+Alt+S"),
+            ("/capture",  "Open Quick Capture",                  "Win+Alt+Q"),
+        };
+
         public void FocusSearch()
         {
             SearchInput.Text = "";
@@ -75,6 +85,12 @@ namespace StickyNotes__
         private void RunSearch()
         {
             string query = SearchInput.Text.Trim();
+
+            if (query.StartsWith("/"))
+            {
+                RunCommandSearch(query);
+                return;
+            }
             string? tagFilter = TagFilterCombo.SelectedItem as string;
             if (tagFilter == AllTagsOption) tagFilter = null;
 
@@ -173,10 +189,60 @@ namespace StickyNotes__
             }
         }
 
+        private void RunCommandSearch(string query)
+        {
+            string q = query.ToLowerInvariant();
+            var matched = Commands
+                .Where(c => c.Command.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+                .Select(c => new NoteCardViewModel
+                {
+                    Id = -1,
+                    Title = c.Command,
+                    Color = "blue",
+                    Snippet = c.Description + (c.Shortcut != "─" ? $"   [{c.Shortcut}]" : ""),
+                })
+                .ToList();
+
+            ResultsListBox.ItemsSource = matched;
+            if (matched.Count > 0) ResultsListBox.SelectedIndex = 0;
+        }
+
+        private void ExecuteCommand(string command)
+        {
+            this.Hide();
+            string cmd = command.Split(' ')[0].ToLowerInvariant();
+            switch (cmd)
+            {
+                case "/new":
+                    _mainWnd.CreateNewNote();
+                    break;
+                case "/template":
+                    _mainWnd.OpenTemplatePicker();
+                    break;
+                case "/graph":
+                    _mainWnd.OpenGraphWindow();
+                    break;
+                case "/manager":
+                    _mainWnd.OpenNoteManager();
+                    break;
+                case "/snip":
+                    _mainWnd.TakeRegionScreenshot();
+                    break;
+                case "/capture":
+                    _mainWnd.ToggleQuickCapture();
+                    break;
+            }
+        }
+
         private void OpenSelected()
         {
             if (ResultsListBox.SelectedItem is NoteCardViewModel vm)
             {
+                if (vm.Id == -1)
+                {
+                    ExecuteCommand(vm.Title);
+                    return;
+                }
                 this.Hide();
                 _mainWnd.OpenNoteWindow(vm.Id);
             }

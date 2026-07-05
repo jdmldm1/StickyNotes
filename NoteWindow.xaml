@@ -49,6 +49,7 @@
                     <ColumnDefinition Width="Auto"/> <!-- Toggle Preview -->
                     <ColumnDefinition Width="Auto"/> <!-- Toggle AI Chat -->
                     <ColumnDefinition Width="Auto"/> <!-- Time Machine -->
+                    <ColumnDefinition Width="Auto"/> <!-- Backlinks -->
                     <ColumnDefinition Width="Auto"/> <!-- Options -->
                     <ColumnDefinition Width="Auto"/> <!-- Close -->
                 </Grid.ColumnDefinitions>
@@ -77,13 +78,18 @@
                         Width="30" Height="30" Background="Transparent" BorderThickness="0"
                         Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
 
+                <!-- Backlinks -->
+                <Button Grid.Column="5" x:Name="BacklinksToggleButton" Content="🔗" Click="BacklinksToggleButton_Click" ToolTip="Linked Notes"
+                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                        Foreground="#e0e0e0" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Visibility="Collapsed"/>
+
                 <!-- Options -->
-                <Button Grid.Column="5" Content="..." Click="OptionsButton_Click" ToolTip="Options"
+                <Button Grid.Column="6" Content="..." Click="OptionsButton_Click" ToolTip="Options"
                         Width="30" Height="30" Background="Transparent" BorderThickness="0"
                         Foreground="#e0e0e0" FontSize="14" FontWeight="Bold" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
 
                 <!-- Close -->
-                <Button Grid.Column="6" Content="✕" Click="CloseButton_Click" ToolTip="Close"
+                <Button Grid.Column="7" Content="✕" Click="CloseButton_Click" ToolTip="Close"
                         Width="30" Height="30" Margin="0,0,5,0" Background="Transparent" BorderThickness="0"
                         Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
             </Grid>
@@ -282,6 +288,23 @@
                         <!-- Versions List -->
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="HistoryVersionsPanel"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Backlinks Panel (Connected Notes) -->
+                <Border x:Name="BacklinksPanel" Grid.Row="1" Height="120" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed">
+                    <Grid Margin="10,8,10,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <TextBlock Text="🔗  Linked Notes" Foreground="#aaaaaa" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button Content="✕" Click="CloseBacklinks_Click" HorizontalAlignment="Right" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" FontSize="10" Cursor="Hand"/>
+                        </Grid>
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,4,0,0">
+                            <WrapPanel x:Name="BacklinksNotePanel" Orientation="Horizontal"/>
                         </ScrollViewer>
                     </Grid>
                 </Border>

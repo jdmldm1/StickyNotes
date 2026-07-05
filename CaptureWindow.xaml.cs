@@ -11,32 +11,7 @@ namespace StickyNotes__
 {
     public partial class CaptureWindow : Window
     {
-        // GDI P/Invokes
-        [DllImport("gdi32.dll")]
-        private static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
-        
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetDC(IntPtr hwnd);
-        
-        [DllImport("user32.dll")]
-        private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
-        
-        [DllImport("gdi32.dll")]
-        private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
-        
-        [DllImport("gdi32.dll")]
-        private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int nWidth, int nHeight);
-        
-        [DllImport("gdi32.dll")]
-        private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
-        
-        [DllImport("gdi32.dll")]
-        private static extern bool DeleteDC(IntPtr hdc);
-        
-        [DllImport("gdi32.dll")]
-        private static extern bool DeleteObject(IntPtr hObject);
 
-        private const int SRCCOPY = 0x00CC0020;
 
         private System.Windows.Point _startPoint;
         private bool _isSelecting;
@@ -70,13 +45,13 @@ namespace StickyNotes__
 
         private BitmapSource CaptureScreen(int x, int y, int width, int height)
         {
-            IntPtr hdcScreen = GetDC(IntPtr.Zero);
-            IntPtr hdcMem = CreateCompatibleDC(hdcScreen);
-            IntPtr hBitmap = CreateCompatibleBitmap(hdcScreen, width, height);
-            IntPtr hOld = SelectObject(hdcMem, hBitmap);
+            IntPtr hdcScreen = Win32Helper.GetDC(IntPtr.Zero);
+            IntPtr hdcMem = Win32Helper.CreateCompatibleDC(hdcScreen);
+            IntPtr hBitmap = Win32Helper.CreateCompatibleBitmap(hdcScreen, width, height);
+            IntPtr hOld = Win32Helper.SelectObject(hdcMem, hBitmap);
 
-            BitBlt(hdcMem, 0, 0, width, height, hdcScreen, x, y, SRCCOPY);
-            SelectObject(hdcMem, hOld);
+            Win32Helper.BitBlt(hdcMem, 0, 0, width, height, hdcScreen, x, y, Win32Helper.SRCCOPY);
+            Win32Helper.SelectObject(hdcMem, hOld);
 
             BitmapSource bmp = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
                 hBitmap,
@@ -86,9 +61,9 @@ namespace StickyNotes__
             );
 
             // Clean up GDI objects
-            DeleteDC(hdcMem);
-            DeleteObject(hBitmap);
-            ReleaseDC(IntPtr.Zero, hdcScreen);
+            Win32Helper.DeleteDC(hdcMem);
+            Win32Helper.DeleteObject(hBitmap);
+            Win32Helper.ReleaseDC(IntPtr.Zero, hdcScreen);
 
             return bmp;
         }

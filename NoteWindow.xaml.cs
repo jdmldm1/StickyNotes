@@ -162,6 +162,7 @@ namespace StickyNotes__
             RefreshAttachmentsPanel();
             RefreshCategoryDropdown();
             UpdateWordCount();
+            RefreshBacklinksPanel();
         }
 
         private void ApplyColor()
@@ -268,6 +269,19 @@ namespace StickyNotes__
             menu.Items.Add(exportItem);
             menu.Items.Add(new Separator());
 
+            // Save as Template
+            var saveAsTemplateItem = new MenuItem { Header = "Save as Template" };
+            saveAsTemplateItem.Click += (s, args) =>
+            {
+                DatabaseHelper.SetNoteIsTemplate(_noteId, true);
+                if (Owner is MainWindow main)
+                {
+                    main.ShowStatusToast("Saved as template ✅");
+                }
+            };
+            menu.Items.Add(saveAsTemplateItem);
+            menu.Items.Add(new Separator());
+
             // Delete
             var deleteItem = new MenuItem { Header = "Delete Note" };
             deleteItem.Click += (s, args) => DeleteNote();
@@ -336,6 +350,16 @@ namespace StickyNotes__
             DatabaseHelper.UpdateNote(_note);
             NotifyNotesChanged();
             RefreshCategoryDropdown();
+        }
+
+        public void ReloadNoteFromDb()
+        {
+            var latest = DatabaseHelper.GetNote(_noteId);
+            if (latest != null)
+            {
+                _note = latest;
+                LoadNoteData();
+            }
         }
 
         private const string AddNewCategoryOption = "+ New Category...";
@@ -410,11 +434,10 @@ namespace StickyNotes__
 
         private void AddTagButton_Click(object sender, RoutedEventArgs e)
         {
-            // Simple custom input dialog or prompt (we can use a TextBox helper or standard prompt)
-            string tag = InputBox.Show("Add Tag", "Enter tag name:");
-            if (!string.IsNullOrEmpty(tag))
+            var dlg = new InputDialog("Enter tag name:", "Add Tag");
+            if (dlg.ShowDialog() == true && !string.IsNullOrEmpty(dlg.Answer))
             {
-                DatabaseHelper.AddTagToNote(_noteId, tag);
+                DatabaseHelper.AddTagToNote(_noteId, dlg.Answer);
                 UpdateTagsDisplay();
                 NotifyNotesChanged();
             }
@@ -629,8 +652,6 @@ namespace StickyNotes__
             {
                 AutoDetectUrl(e);
             }
-
-            UpdateWordCount();
         }
 
         private void UpdateWordCount()
@@ -682,6 +703,7 @@ namespace StickyNotes__
             _note.Content = xamlText;
 
             DatabaseHelper.UpdateNote(_note);
+            ParseAndSaveWikiLinks(plainText);
             NotifyNotesChanged();
 
             // Save history entry if changed significantly
@@ -702,6 +724,7 @@ namespace StickyNotes__
                 }
             }
 
+            UpdateWordCount();
         }
 
         private void Window_LocationChanged(object sender, EventArgs e)
@@ -1808,107 +1831,82 @@ namespace StickyNotes__
         }
 
         #endregion
-    }
 
-    // Helper class for a quick InputBox Dialog in WPF
-    public static class InputBox
-    {
-        public static string Show(string title, string prompt)
+        // ── Wiki Backlinks ───────────────────────────────────────────────────
+
+        private void ParseAndSaveWikiLinks(string plainText)
         {
-            Window window = new Window
+            try
             {
-                Title = title,
-                Width = 300,
-                Height = 150,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                WindowStyle = WindowStyle.None,
-                ResizeMode = ResizeMode.NoResize,
-                AllowsTransparency = true,
-                Background = Brushes.Transparent
-            };
+                var linkedTitles = NoteContentHelper.ExtractWikiLinks(plainText);
+                var currentLinks = DatabaseHelper.GetNoteConnections()
+                    .Where(c => c.FromNoteId == _noteId || c.ToNoteId == _noteId)
+                    .ToList();
 
-            Border border = new Border
-            {
-                Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0, 132, 255)),
-                BorderThickness = new Thickness(1.5),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(15)
-            };
+                foreach (var title in linkedTitles)
+                {
+                    var target = DatabaseHelper.GetNoteByTitle(title);
+                    if (target != null && target.Id != _noteId)
+                        DatabaseHelper.AddNoteConnection(_noteId, target.Id);
+                }
 
-            Grid grid = new Grid();
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            TextBlock textBlock = new TextBlock
-            {
-                Text = prompt,
-                Foreground = Brushes.White,
-                Margin = new Thickness(0, 0, 0, 10),
-                FontSize = 12
-            };
-            Grid.SetRow(textBlock, 0);
-
-            TextBox textBox = new TextBox
-            {
-                Background = new SolidColorBrush(Color.FromRgb(45, 45, 45)),
-                Foreground = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(68, 68, 68)),
-                Padding = new Thickness(5, 3, 5, 3),
-                Margin = new Thickness(0, 0, 0, 15),
-                CaretBrush = Brushes.White
-            };
-            Grid.SetRow(textBox, 1);
-
-            StackPanel buttonsPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            Grid.SetRow(buttonsPanel, 2);
-
-            Button okButton = new Button
-            {
-                Content = "OK",
-                Width = 60,
-                Height = 25,
-                Margin = new Thickness(0, 0, 10, 0),
-                Background = new SolidColorBrush(Color.FromRgb(0, 132, 255)),
-                Foreground = Brushes.White,
-                BorderThickness = new Thickness(0)
-            };
-            okButton.Click += (s, e) => { window.DialogResult = true; window.Close(); };
-
-            Button cancelButton = new Button
-            {
-                Content = "Cancel",
-                Width = 60,
-                Height = 25,
-                Background = new SolidColorBrush(Color.FromRgb(58, 58, 58)),
-                Foreground = Brushes.White,
-                BorderThickness = new Thickness(0)
-            };
-            cancelButton.Click += (s, e) => { window.DialogResult = false; window.Close(); };
-
-            buttonsPanel.Children.Add(okButton);
-            buttonsPanel.Children.Add(cancelButton);
-
-            grid.Children.Add(textBlock);
-            grid.Children.Add(textBox);
-            grid.Children.Add(buttonsPanel);
-
-            border.Child = grid;
-            window.Content = border;
-
-            // Handle dragging
-            border.MouseDown += (s, e) => { if (e.ChangedButton == MouseButton.Left) window.DragMove(); };
-
-            if (window.ShowDialog() == true)
-            {
-                return textBox.Text;
+                RefreshBacklinksPanel();
             }
-            return "";
+            catch { }
+        }
+
+        private void RefreshBacklinksPanel()
+        {
+            var backlinks = DatabaseHelper.GetBacklinks(_noteId);
+            Dispatcher.Invoke(() =>
+            {
+                BacklinksToggleButton.Visibility = backlinks.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+                BacklinksNotePanel.Children.Clear();
+                foreach (var note in backlinks)
+                {
+                    var chip = new Border
+                    {
+                        Background = new SolidColorBrush(Color.FromArgb(50, 0, 132, 255)),
+                        BorderBrush = new SolidColorBrush(Color.FromArgb(100, 0, 132, 255)),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(8, 3, 8, 3),
+                        Margin = new Thickness(0, 0, 6, 4),
+                        Cursor = Cursors.Hand,
+                        ToolTip = note.Title,
+                        Tag = note.Id,
+                    };
+                    chip.Child = new TextBlock
+                    {
+                        Text = note.Title.Length > 20 ? note.Title.Substring(0, 18) + "…" : note.Title,
+                        Foreground = Brushes.White,
+                        FontSize = 10,
+                    };
+                    chip.MouseLeftButtonDown += (s, e) =>
+                    {
+                        if (s is Border b && b.Tag is int nid)
+                        {
+                            if (Owner is MainWindow main)
+                                main.OpenNoteWindow(nid);
+                        }
+                    };
+                    BacklinksNotePanel.Children.Add(chip);
+                }
+            });
+        }
+
+        private void BacklinksToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            bool isVisible = BacklinksPanel.Visibility == Visibility.Visible;
+            AiChatPanel.Visibility = Visibility.Collapsed;
+            TimeMachinePanel.Visibility = Visibility.Collapsed;
+            BacklinksPanel.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        private void CloseBacklinks_Click(object sender, RoutedEventArgs e)
+        {
+            BacklinksPanel.Visibility = Visibility.Collapsed;
         }
     }
 }

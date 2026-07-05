@@ -80,7 +80,6 @@ namespace StickyNotes__
             if (Owner is MainWindow main)
                 main.ApplySidebarOpacity(opacity);
         }
-
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -103,6 +102,7 @@ namespace StickyNotes__
 
                 string newJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(AppConfig.SettingsPath, newJson);
+                SettingsService.Invalidate();
                 
                 this.DialogResult = true;
                 this.Close();
@@ -112,6 +112,7 @@ namespace StickyNotes__
                 MessageBox.Show("Error saving settings: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
         private void ImportStickyNotesButton_Click(object sender, RoutedEventArgs e)
         {

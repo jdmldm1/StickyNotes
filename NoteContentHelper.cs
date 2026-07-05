@@ -48,20 +48,38 @@ namespace StickyNotes__
 
         public static List<(string Label, string Url)> ExtractHyperlinks(string? content)
         {
-            var results = new List<(string, string)>();
-            if (string.IsNullOrEmpty(content)) return results;
+            var list = new List<(string, string)>();
+            if (string.IsNullOrEmpty(content)) return list;
 
             try
             {
                 var doc = new FlowDocument();
-                var range = new TextRange(doc.ContentStart, doc.ContentEnd);
-                if (TryLoadRange(range, content))
+                if (TryLoadRange(new TextRange(doc.ContentStart, doc.ContentEnd), content))
                 {
-                    CollectHyperlinks(doc.Blocks, results);
+                    CollectHyperlinks(doc.Blocks, list);
                 }
             }
-            catch { }
+            catch {}
+            return list;
+        }
 
+        /// <summary>
+        /// Extracts all [[Title]] wiki-link references from a plain-text string.
+        /// Returns the referenced titles (without the [[ ]] brackets).
+        /// </summary>
+        public static List<string> ExtractWikiLinks(string plainText)
+        {
+            var results = new List<string>();
+            if (string.IsNullOrEmpty(plainText)) return results;
+
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                plainText, @"\[\[([^\]]+)\]\]");
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                string title = m.Groups[1].Value.Trim();
+                if (!string.IsNullOrEmpty(title))
+                    results.Add(title);
+            }
             return results;
         }
 

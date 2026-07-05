@@ -224,7 +224,8 @@ namespace StickyNotes__
         {
             bool isSelected = _currentNote != null && _currentNote.Id == note.Id;
             string title = string.IsNullOrEmpty(note.Title) ? "Sticky Note" : note.Title;
-            string snippet = NoteContentHelper.ExtractPlainText(note.Content);
+            string fullText = NoteContentHelper.ExtractPlainText(note.Content);
+            string snippet = BuildSnippetWithoutTitle(fullText);
             if (snippet.Length > 90) snippet = snippet.Substring(0, 90) + "...";
 
             var border = new Border
@@ -262,6 +263,14 @@ namespace StickyNotes__
             border.MouseLeftButtonUp += (s, e) => LoadNoteIntoEditor(note.Id);
 
             return border;
+        }
+
+        private string BuildSnippetWithoutTitle(string fullPlainText)
+        {
+            if (string.IsNullOrEmpty(fullPlainText)) return "";
+            int firstNewline = fullPlainText.IndexOf('\n');
+            if (firstNewline < 0) return "";
+            return fullPlainText.Substring(firstNewline + 1).TrimStart('\r', '\n', ' ', '\t');
         }
 
         #endregion
@@ -394,10 +403,10 @@ namespace StickyNotes__
             var newTagItem = new MenuItem { Header = "+ New Tag..." };
             newTagItem.Click += (s, args) =>
             {
-                string tag = InputBox.Show("Add Tag", "Enter tag name:");
-                if (!string.IsNullOrEmpty(tag))
+                var dlg = new InputDialog("Enter tag name:", "Add Tag") { Owner = this };
+                if (dlg.ShowDialog() == true && !string.IsNullOrEmpty(dlg.Answer))
                 {
-                    DatabaseHelper.AddTagToNote(id, tag);
+                    DatabaseHelper.AddTagToNote(id, dlg.Answer);
                     RefreshEditorTags();
                     _owner.RefreshTagsFilter();
                 }
@@ -462,7 +471,6 @@ namespace StickyNotes__
             if (_isLoadingNote) return;
             _saveTimer.Stop();
             _saveTimer.Start();
-            UpdateWordCount();
         }
 
         private void EditorTitleBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -521,6 +529,7 @@ namespace StickyNotes__
                 }
             }
 
+            UpdateWordCount();
             _owner.RefreshNotesList();
         }
 

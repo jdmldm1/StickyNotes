@@ -89,7 +89,8 @@ namespace StickyNotes__
                 {
                     var p = new Paragraph { Margin = new Thickness(15, 2, 0, 2) };
                     p.Inlines.Add(new Run("•  ") { Foreground = new SolidColorBrush(Color.FromRgb(0, 132, 255)), FontWeight = FontWeights.Bold });
-                    p.Inlines.Add(new Run(trimmed.Substring(2)));
+                    foreach (var inline in ParseInlineRuns(trimmed.Substring(2)))
+                        p.Inlines.Add(inline);
                     doc.Blocks.Add(p);
                 }
                 // 4. Code Blocks
@@ -141,13 +142,56 @@ namespace StickyNotes__
                     else
                     {
                         var p = new Paragraph { Margin = new Thickness(0, 2, 0, 2) };
-                        p.Inlines.Add(new Run(line));
+                        foreach (var inline in ParseInlineRuns(line))
+                            p.Inlines.Add(inline);
                         doc.Blocks.Add(p);
                     }
                 }
             }
 
             return doc;
+        }
+
+        /// <summary>
+        /// Splits a text line into WPF Inline elements, handling **bold**, *italic*, and `code` markers.
+        /// </summary>
+        private static IEnumerable<System.Windows.Documents.Inline> ParseInlineRuns(string text)
+        {
+            var pattern = new System.Text.RegularExpressions.Regex(@"(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)" );
+            int lastIndex = 0;
+
+            foreach (System.Text.RegularExpressions.Match match in pattern.Matches(text))
+            {
+                if (match.Index > lastIndex)
+                    yield return new Run(text.Substring(lastIndex, match.Index - lastIndex));
+
+                string matched = match.Value;
+                if (matched.StartsWith("**") && matched.EndsWith("**"))
+                {
+                    yield return new Run(matched.Substring(2, matched.Length - 4)) { FontWeight = FontWeights.Bold };
+                }
+                else if (matched.StartsWith("*") && matched.EndsWith("*"))
+                {
+                    yield return new Run(matched.Substring(1, matched.Length - 2)) { FontStyle = FontStyles.Italic };
+                }
+                else if (matched.StartsWith("`") && matched.EndsWith("`"))
+                {
+                    yield return new Run(matched.Substring(1, matched.Length - 2))
+                    {
+                        FontFamily = new FontFamily("Consolas, Courier New, monospace"),
+                        Foreground = new System.Windows.Media.SolidColorBrush(
+                            System.Windows.Media.Color.FromRgb(180, 230, 180))
+                    };
+                }
+
+                lastIndex = match.Index + match.Length;
+            }
+
+            if (lastIndex < text.Length)
+                yield return new Run(text.Substring(lastIndex));
+
+            if (lastIndex == 0)
+                yield return new Run(text);
         }
     }
 }

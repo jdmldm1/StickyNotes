@@ -109,6 +109,7 @@ namespace StickyNotes__
         public double CanvasY { get; set; } = 50;
         public string Category { get; set; } = "General";
         public bool IsFavorite { get; set; }
+        public bool IsTemplate { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }
@@ -276,6 +277,13 @@ namespace StickyNotes__
                 }
                 catch {}
 
+                try
+                {
+                    cmd.CommandText = "ALTER TABLE notes ADD COLUMN is_template INTEGER DEFAULT 0;";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
                 // One-time cleanup: scrub any \id=... metadata tags from previously imported notes
                 CleanupStickyNotesMetadataInDb(conn);
 
@@ -396,7 +404,8 @@ namespace StickyNotes__
                         h = $h,
                         canvas_x = $canvas_x,
                         canvas_y = $canvas_y,
-                        category = $category
+                        category = $category,
+                        is_template = $is_template
                     WHERE id = $id;
                 ";
                 cmd.Parameters.AddWithValue("$title", note.Title);
@@ -414,6 +423,7 @@ namespace StickyNotes__
                 cmd.Parameters.AddWithValue("$canvas_x", note.CanvasX);
                 cmd.Parameters.AddWithValue("$canvas_y", note.CanvasY);
                 cmd.Parameters.AddWithValue("$category", note.Category);
+                cmd.Parameters.AddWithValue("$is_template", note.IsTemplate ? 1 : 0);
                 cmd.Parameters.AddWithValue("$id", note.Id);
 
                 cmd.ExecuteNonQuery();
@@ -678,6 +688,167 @@ namespace StickyNotes__
             return tags;
         }
 
+        /// <summary>
+        /// Returns all note tags grouped by note ID. One query instead of N queries in RefreshNotesList.
+        /// </summary>
+        public static Dictionary<int, List<string>> GetAllNoteTagsMap()
+        {
+            var map = new Dictionary<int, List<string>>();
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT nt.note_id, t.name
+                    FROM note_tags nt
+                    JOIN tags t ON t.id = nt.tag_id
+                    ORDER BY t.name ASC;";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int noteId = reader.GetInt32(0);
+                        string tag = reader.GetString(1);
+                        if (!map.ContainsKey(noteId)) map[noteId] = new List<string>();
+                        map[noteId].Add(tag);
+                    }
+                }
+            }
+            return map;
+        }
+
+        /// <summary>
+        /// Returns all attachments grouped by note ID. One query instead of N queries.
+        /// </summary>
+        public static Dictionary<int, List<NoteAttachment>> GetAllNoteAttachmentsMap()
+        {
+            var map = new Dictionary<int, List<NoteAttachment>>();
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT id, note_id, file_name, file_path, added_at FROM note_attachments ORDER BY added_at ASC;";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var attachment = new NoteAttachment
+                        {
+                            Id = reader.GetInt32(0),
+                            NoteId = reader.GetInt32(1),
+                            FileName = reader.GetString(2),
+                            FilePath = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                            AddedAt = reader.IsDBNull(4) ? DateTime.MinValue : DateTime.Parse(reader.GetString(4))
+                        };
+                        if (!map.ContainsKey(attachment.NoteId)) map[attachment.NoteId] = new List<NoteAttachment>();
+                        map[attachment.NoteId].Add(attachment);
+                    }
+                }
+            }
+            return map;
+        }
+
+        /// <summary>
+        /// Returns all (NoteId, NoteTitle, NoteColor, TagName) tuples in a single query.
+        /// Used by GraphWindow to build the tag graph without N+1 queries.
+        /// </summary>
+        public static List<(int NoteId, string NoteTitle, string NoteColor, string TagName)> GetAllNoteTagPairs()
+        {
+            var result = new List<(int, string, string, string)>();
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT n.id, COALESCE(n.title, ''), COALESCE(n.color, 'yellow'), t.name
+                    FROM notes n
+                    JOIN note_tags nt ON nt.note_id = n.id
+                    JOIN tags t ON t.id = nt.tag_id
+                    ORDER BY n.id;";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                        result.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+                }
+            }
+            return result;
+        }
+
+        /// <summary>Finds a note by exact title match (case-insensitive). Returns null if not found.</summary>
+        public static Note? GetNoteByTitle(string title)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT * FROM notes WHERE title = $title COLLATE NOCASE LIMIT 1;";
+                cmd.Parameters.AddWithValue("$title", title);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read()) return ReadNote(reader);
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns all notes that have an explicit connection to/from the given noteId.
+        /// Used by NoteWindow's Backlinks panel.
+        /// </summary>
+        public static List<Note> GetBacklinks(int noteId)
+        {
+            var notes = new List<Note>();
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT DISTINCT n.* FROM notes n
+                    JOIN note_connections nc ON
+                        (nc.from_note_id = n.id AND nc.to_note_id = $noteId)
+                        OR (nc.to_note_id = n.id AND nc.from_note_id = $noteId)
+                    WHERE n.id != $noteId
+                    ORDER BY n.updated_at DESC;";
+                cmd.Parameters.AddWithValue("$noteId", noteId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read()) notes.Add(ReadNote(reader));
+                }
+            }
+            return notes;
+        }
+
+        /// <summary>Marks or unmarks a note as a reusable template.</summary>
+        public static void SetNoteIsTemplate(int noteId, bool isTemplate)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE notes SET is_template = $v WHERE id = $id;";
+                cmd.Parameters.AddWithValue("$v", isTemplate ? 1 : 0);
+                cmd.Parameters.AddWithValue("$id", noteId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>Returns all notes marked as user-defined templates.</summary>
+        public static List<Note> ListTemplates()
+        {
+            var notes = new List<Note>();
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT * FROM notes WHERE is_template = 1 ORDER BY updated_at DESC;";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read()) notes.Add(ReadNote(reader));
+                }
+            }
+            return notes;
+        }
+
         #region Note History & Connections Queries
 
         public static void AddNoteHistoryEntry(int noteId, string content)
@@ -902,6 +1073,7 @@ namespace StickyNotes__
                 CanvasY = GetDoubleSafe(reader, "canvas_y"),
                 Category = GetStringSafe(reader, "category"),
                 IsFavorite = GetBoolSafe(reader, "is_favorite"),
+                IsTemplate = GetBoolSafe(reader, "is_template"),
                 CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
                 UpdatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("updated_at")))
             };

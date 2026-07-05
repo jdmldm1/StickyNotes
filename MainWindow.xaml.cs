@@ -33,6 +33,8 @@ namespace StickyNotes__
         private SpotlightWindow? _spotlightWnd;
         private QuickCaptureWindow? _quickCaptureWnd;
         private NoteManagerWindow? _noteManagerWnd;
+        private GraphWindow? _graphWnd;
+        private TemplatePickerWindow? _templatePickerWnd;
         private ClipboardPickerWindow? _clipboardPickerWnd;
         private string _sortOrder = "date"; // "date" or "category"
 
@@ -57,7 +59,19 @@ namespace StickyNotes__
         private void InitializeNotifyIcon()
         {
             _notifyIcon = new System.Windows.Forms.NotifyIcon();
-            _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+            try
+            {
+                var iconUri = new Uri("pack://application:,,,/app_icon.ico");
+                var streamInfo = Application.GetResourceStream(iconUri);
+                if (streamInfo?.Stream != null)
+                    _notifyIcon.Icon = new System.Drawing.Icon(streamInfo.Stream);
+                else
+                    _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+            }
+            catch
+            {
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+            }
             _notifyIcon.Text = "StickyNotes++";
             _notifyIcon.Visible = true;
             _notifyIcon.DoubleClick += (s, e) => RestoreFromTray();
@@ -92,6 +106,9 @@ namespace StickyNotes__
             {
                 try { noteWnd.Close(); } catch {}
             }
+
+            try { _noteManagerWnd?.Close(); } catch { }
+            try { _graphWnd?.Close(); } catch { }
 
             Application.Current.Shutdown();
         }
@@ -183,13 +200,9 @@ namespace StickyNotes__
         {
             try
             {
-                if (System.IO.File.Exists(AppConfig.SettingsPath))
-                {
-                    string json = System.IO.File.ReadAllText(AppConfig.SettingsPath);
-                    var config = System.Text.Json.JsonSerializer.Deserialize<AppConfigData>(json);
-                    if (config != null && config.SidebarOpacity > 0)
-                        ApplySidebarOpacity(config.SidebarOpacity);
-                }
+                var config = SettingsService.Current;
+                if (config.SidebarOpacity > 0)
+                    ApplySidebarOpacity(config.SidebarOpacity);
             }
             catch { }
         }
@@ -207,20 +220,14 @@ namespace StickyNotes__
             RegisterAppBar();
 
             // Register Hotkeys
-            // Win+Alt+N for New Note (ID 9001)
-            // Win+Alt+S for Screenshot (ID 9002)
-            // Win+Alt+Space for Spotlight (ID 9003)
-            // Win+Alt+T for Save Browser Tabs (ID 9004)
-            // Win+Alt+F for Save Files to a New Note (ID 9005)
-            // Win+Alt+M for Quick Meeting Note (ID 9006)
-            // Win+Alt+Q for Quick Capture (ID 9007)
-            Win32Helper.RegisterHotKey(wndHelper.Handle, 9001, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E); // 0x4E = 'N'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, 9002, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53); // 0x53 = 'S'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, 9003, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20); // 0x20 = Space
-            Win32Helper.RegisterHotKey(wndHelper.Handle, 9004, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54); // 0x54 = 'T'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, 9005, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46); // 0x46 = 'F'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, 9006, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // 0x4D = 'M'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, 9007, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51); // 0x51 = 'Q'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyNewNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E); // 0x4E = 'N'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyScreenshot, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53); // 0x53 = 'S'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeySpotlight, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20); // 0x20 = Space
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyBrowserTabs, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54); // 0x54 = 'T'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeySaveFiles, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46); // 0x46 = 'F'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyMeetingNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // 0x4D = 'M'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyQuickCapture, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51); // 0x51 = 'Q'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyGraph, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x47); // 0x47 = 'G'
 
             // Note: intentionally NOT enabling the Mica backdrop here. Mica composites its own
             // blurred/tinted wallpaper sample underneath the window, which fights with the sidebar
@@ -241,39 +248,44 @@ namespace StickyNotes__
             if (msg == WM_HOTKEY)
             {
                 int id = wParam.ToInt32();
-                if (id == 9001)
+                if (id == Win32Helper.HotkeyNewNote)
                 {
                     CreateNewNote();
                     handled = true;
                 }
-                else if (id == 9002)
+                else if (id == Win32Helper.HotkeyScreenshot)
                 {
                     TakeRegionScreenshot();
                     handled = true;
                 }
-                else if (id == 9003)
+                else if (id == Win32Helper.HotkeySpotlight)
                 {
                     ToggleSpotlight();
                     handled = true;
                 }
-                else if (id == 9004)
+                else if (id == Win32Helper.HotkeyBrowserTabs)
                 {
                     SaveBrowserTabs();
                     handled = true;
                 }
-                else if (id == 9005)
+                else if (id == Win32Helper.HotkeySaveFiles)
                 {
                     SaveFilesToNewNote();
                     handled = true;
                 }
-                else if (id == 9006)
+                else if (id == Win32Helper.HotkeyMeetingNote)
                 {
                     CreateQuickMeetingNote();
                     handled = true;
                 }
-                else if (id == 9007)
+                else if (id == Win32Helper.HotkeyQuickCapture)
                 {
                     ToggleQuickCapture();
+                    handled = true;
+                }
+                else if (id == Win32Helper.HotkeyGraph)
+                {
+                    GraphButton_Click(this, new RoutedEventArgs());
                     handled = true;
                 }
             }
@@ -374,6 +386,73 @@ namespace StickyNotes__
             }
         }
 
+        private void GraphButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_graphWnd == null || !_graphWnd.IsLoaded)
+            {
+                _graphWnd = new GraphWindow(this);
+                _graphWnd.Show();
+            }
+            else
+            {
+                _graphWnd.Activate();
+                if (_graphWnd.WindowState == WindowState.Minimized)
+                    _graphWnd.WindowState = WindowState.Normal;
+            }
+        }
+
+        public void OpenTemplatePicker()
+        {
+            if (_templatePickerWnd == null || !_templatePickerWnd.IsLoaded)
+            {
+                _templatePickerWnd = new TemplatePickerWindow(this);
+                _templatePickerWnd.ShowDialog();
+            }
+            else
+            {
+                _templatePickerWnd.Activate();
+            }
+        }
+
+        public void CreateNoteFromUserTemplate(int templateNoteId)
+        {
+            var templateNote = DatabaseHelper.GetNote(templateNoteId);
+            if (templateNote == null) return;
+
+            var dlg = new InputDialog("Enter a title for the new note:", "New from Template", templateNote.Title) { Owner = this };
+            if (dlg.ShowDialog() != true) return;
+            string title = dlg.Answer.Trim();
+
+            int noteId = DatabaseHelper.CreateNote(title, templateNote.Content, color: templateNote.Color);
+            var newNote = DatabaseHelper.GetNote(noteId);
+            if (newNote != null)
+            {
+                newNote.Category = templateNote.Category;
+                DatabaseHelper.UpdateNote(newNote);
+            }
+            RefreshNotesList();
+            OpenNoteWindow(noteId);
+        }
+
+        public void CreateNoteFromBuiltInTemplate(string templateName)
+        {
+            var template = NoteTemplates.Find(t => t.Name == templateName);
+            if (template != null)
+                CreateNoteFromTemplate(template);
+            else
+                CreateNewNote(); // fallback
+        }
+
+        public void OpenGraphWindow()
+        {
+            GraphButton_Click(this, new RoutedEventArgs());
+        }
+
+        public void OpenNoteManager()
+        {
+            NoteManagerButton_Click(this, new RoutedEventArgs());
+        }
+
         private void ToggleSpotlight()
         {
             if (_spotlightWnd == null) return;
@@ -390,7 +469,7 @@ namespace StickyNotes__
             }
         }
 
-        private void ToggleQuickCapture()
+        public void ToggleQuickCapture()
         {
             if (_quickCaptureWnd == null) return;
 
@@ -406,19 +485,20 @@ namespace StickyNotes__
             }
         }
 
-        public void OpenNoteWindow(int noteId)
+        public NoteWindow OpenNoteWindow(int noteId)
         {
             if (_openNoteWindows.TryGetValue(noteId, out NoteWindow? openWindow))
             {
                 openWindow.Activate();
                 if (openWindow.WindowState == WindowState.Minimized)
                     openWindow.WindowState = WindowState.Normal;
-                return;
+                return openWindow;
             }
 
             var noteWindow = new NoteWindow(noteId);
             noteWindow.Show();
             _openNoteWindows.Add(noteId, noteWindow);
+            return noteWindow;
         }
 
         public void NotifyNoteWindowClosed(int noteId)
@@ -449,9 +529,14 @@ namespace StickyNotes__
             // Favorites always float to the top, then newest first within each group
             var sortedNotes = notes.OrderByDescending(n => n.IsFavorite).ThenByDescending(n => n.UpdatedAt).ToList();
 
+            var tagsMap = DatabaseHelper.GetAllNoteTagsMap();
+            var attachmentsMap = DatabaseHelper.GetAllNoteAttachmentsMap();
+
             var viewModels = sortedNotes.Select(n =>
             {
                 string fullText = GetPlainTextFromXaml(n.Content);
+                List<string> tags = tagsMap.TryGetValue(n.Id, out var t) ? t : new List<string>();
+                List<NoteAttachment> attachments = attachmentsMap.TryGetValue(n.Id, out var a) ? a : new List<NoteAttachment>();
                 return new NoteCardViewModel
                 {
                     Id = n.Id,
@@ -460,11 +545,11 @@ namespace StickyNotes__
                     Snippet = BuildCardSnippet(fullText),
                     FullPlainText = fullText,
                     ImagePath = n.ImagePath,
-                    Tags = DatabaseHelper.GetNoteTags(n.Id),
+                    Tags = tags,
                     Category = n.Category ?? "General",
                     IsFavorite = n.IsFavorite,
                     UpdatedAt = n.UpdatedAt,
-                    QuickOpenItems = BuildQuickOpenItems(n)
+                    QuickOpenItems = BuildQuickOpenItems(n, attachments)
                 };
             }).ToList();
 
@@ -748,11 +833,12 @@ namespace StickyNotes__
             return firstRemainingLine.Trim();
         }
 
-        private static List<QuickOpenItem> BuildQuickOpenItems(Note note)
+        private static List<QuickOpenItem> BuildQuickOpenItems(Note note, List<NoteAttachment>? preloadedAttachments = null)
         {
             var items = new List<QuickOpenItem>();
 
-            foreach (var attachment in DatabaseHelper.GetNoteAttachments(note.Id))
+            var attachments = preloadedAttachments ?? DatabaseHelper.GetNoteAttachments(note.Id);
+            foreach (var attachment in attachments)
             {
                 items.Add(new QuickOpenItem { Label = attachment.FileName, Target = attachment.FilePath, IsFile = true });
             }
@@ -846,7 +932,7 @@ namespace StickyNotes__
             return border;
         }
 
-        private async void TakeRegionScreenshot()
+        public async void TakeRegionScreenshot()
         {
             // Minimize current main sidebar temporarily to avoid taking it in screenshot
             this.WindowState = WindowState.Minimized;
@@ -864,8 +950,7 @@ namespace StickyNotes__
                 }
                 catch (Exception ex)
                 {
-                    this.WindowState = WindowState.Normal;
-                    this.Activate();
+                    RestoreFromTray();
                     MessageBox.Show($"Capture window error: {ex.Message}", "Screensnip", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
@@ -874,72 +959,113 @@ namespace StickyNotes__
                 {
                     string imagePath = captureWnd.CapturedImagePath;
 
-                    // Restore sidebar
-                    this.WindowState = WindowState.Normal;
-                    this.Activate();
+                    // Restore sidebar instantly from tray
+                    RestoreFromTray();
 
-                    // Run local OCR (with fallback on failure)
-                    string ocrText = "";
-                    List<string> ocrTags = new List<string>();
-                    try
-                    {
-                        var ocrResult = await OcrHelper.PerformOcrAsync(imagePath);
-                        ocrText = ocrResult.Text ?? "";
-                        ocrTags = ocrResult.Tags ?? new List<string>();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"OCR failed (non-fatal): {ex.Message}");
-                    }
+                    // Wait a tiny bit for the restore transition to begin/complete before opening the note
+                    await System.Threading.Tasks.Task.Delay(150);
 
-                    // Create new note with screenshot details
+                    // Create new note with screenshot details instantly (empty OCR text for now)
                     int noteId = DatabaseHelper.CreateNote(
                         "Screenshot note", 
                         "", 
                         imagePath, 
-                        ocrText, 
+                        "", 
                         "yellow"
                     );
 
-                    // Add auto tags (regex + Ollama AI if running)
-                    var tags = new HashSet<string>(ocrTags);
-                    try
-                    {
-                        if (!string.IsNullOrEmpty(ocrText) && await AiHelper.IsOllamaRunningAsync())
-                        {
-                            var aiTags = await AiHelper.AutoTagTextAsync(ocrText);
-                            foreach (var tag in aiTags)
-                            {
-                                tags.Add(tag.Trim().ToLower());
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"AI tagging failed (non-fatal): {ex.Message}");
-                    }
-
-                    foreach (var tag in tags)
-                    {
-                        if (!string.IsNullOrWhiteSpace(tag))
-                            DatabaseHelper.AddTagToNote(noteId, tag);
-                    }
-
-                    OpenNoteWindow(noteId);
+                    // Open note window and refresh notes list instantly
+                    var noteWindow = OpenNoteWindow(noteId);
                     RefreshNotesList();
                     RefreshTagsFilter();
+
+                    // Run OCR and AI tagging asynchronously in the background
+                    _ = System.Threading.Tasks.Task.Run(async () =>
+                    {
+                        string ocrText = "";
+                        List<string> ocrTags = new List<string>();
+                        try
+                        {
+                            var ocrResult = await OcrHelper.PerformOcrAsync(imagePath);
+                            ocrText = ocrResult.Text ?? "";
+                            ocrTags = ocrResult.Tags ?? new List<string>();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"OCR failed (non-fatal): {ex.Message}");
+                        }
+
+                        // Add auto tags (regex + Ollama AI if running)
+                        var tags = new HashSet<string>(ocrTags);
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(ocrText) && await AiHelper.IsOllamaRunningAsync())
+                            {
+                                var aiTags = await AiHelper.AutoTagTextAsync(ocrText);
+                                foreach (var tag in aiTags)
+                                {
+                                    tags.Add(tag.Trim().ToLower());
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"AI tagging failed (non-fatal): {ex.Message}");
+                        }
+
+                        // Add tags to note in database
+                        foreach (var tag in tags)
+                        {
+                            if (!string.IsNullOrWhiteSpace(tag))
+                                DatabaseHelper.AddTagToNote(noteId, tag);
+                        }
+
+                        // If OCR text was detected, update note content in database
+                        if (!string.IsNullOrEmpty(ocrText))
+                        {
+                            string xamlContent = "";
+                            Dispatcher.Invoke(() =>
+                            {
+                                var doc = new FlowDocument();
+                                doc.Blocks.Add(new Paragraph(new Run(ocrText)));
+                                var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+                                xamlContent = NoteContentHelper.SaveRange(range);
+                            });
+
+                            var updatedNote = DatabaseHelper.GetNote(noteId);
+                            if (updatedNote != null)
+                            {
+                                string currentPlainText = NoteContentHelper.ExtractPlainText(updatedNote.Content).Trim();
+                                if (string.IsNullOrEmpty(currentPlainText))
+                                {
+                                    updatedNote.Content = xamlContent;
+                                    updatedNote.OcrText = ocrText;
+                                    DatabaseHelper.UpdateNote(updatedNote);
+                                }
+                            }
+                        }
+
+                        // Notify UI thread to reload the note content in the open note window
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (noteWindow != null && noteWindow.IsLoaded)
+                            {
+                                noteWindow.ReloadNoteFromDb();
+                            }
+                            RefreshNotesList();
+                            RefreshTagsFilter();
+                        });
+                    });
                 }
                 else
                 {
                     // Restore sidebar if cancelled
-                    this.WindowState = WindowState.Normal;
-                    this.Activate();
+                    RestoreFromTray();
                 }
             }
             catch (Exception ex)
             {
-                this.WindowState = WindowState.Normal;
-                this.Activate();
+                RestoreFromTray();
                 MessageBox.Show($"Screensnip error: {ex.Message}", "Screensnip", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -1076,21 +1202,7 @@ namespace StickyNotes__
 
         private void TemplateButton_Click(object sender, RoutedEventArgs e)
         {
-            var menu = new ContextMenu();
-            foreach (var template in NoteTemplates)
-            {
-                var item = new MenuItem { Header = $"{template.Icon}  {template.Name}" };
-                item.Click += (s, args) => CreateNoteFromTemplate(template);
-                menu.Items.Add(item);
-            }
-
-            menu.Items.Add(new Separator());
-            var clipboardItem = new MenuItem { Header = "📋  + From Clipboard" };
-            clipboardItem.Click += (s, args) => OpenClipboardPicker();
-            menu.Items.Add(clipboardItem);
-
-            menu.PlacementTarget = TemplateButton;
-            menu.IsOpen = true;
+            OpenTemplatePicker();
         }
 
         private void OpenClipboardPicker()
@@ -1247,7 +1359,7 @@ namespace StickyNotes__
 
         private DispatcherTimer? _statusToastTimer;
 
-        private void ShowStatusToast(string message, int durationMs = 2800)
+        public void ShowStatusToast(string message, int durationMs = 2800)
         {
             StatusToastText.Text = message;
             StatusToast.Visibility = Visibility.Visible;
@@ -1278,9 +1390,27 @@ namespace StickyNotes__
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            var settingsWnd = new SettingsWindow { Owner = this };
-            settingsWnd.ShowDialog();
-            LoadSavedOpacity();
+            var menu = new ContextMenu();
+            menu.Style = (Style)FindResource(typeof(ContextMenu));
+
+            var settingsItem = new MenuItem { Header = "⚙  App Settings" };
+            settingsItem.Click += (s, args) =>
+            {
+                var settingsWnd = new SettingsWindow { Owner = this };
+                settingsWnd.ShowDialog();
+                LoadSavedOpacity();
+            };
+            menu.Items.Add(settingsItem);
+
+            var graphItem = new MenuItem { Header = "🕸  Tag Mind Graph" };
+            graphItem.Click += (s, args) =>
+            {
+                GraphButton_Click(this, new RoutedEventArgs());
+            };
+            menu.Items.Add(graphItem);
+
+            menu.PlacementTarget = sender as UIElement;
+            menu.IsOpen = true;
         }
 
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshNotesList();
@@ -1375,10 +1505,10 @@ namespace StickyNotes__
             var newTagItem = new MenuItem { Header = "+ New Tag..." };
             newTagItem.Click += (s, args) =>
             {
-                string tag = InputBox.Show("Add Tag", "Enter tag name:");
-                if (!string.IsNullOrEmpty(tag))
+                var dlg = new InputDialog("Enter tag name:", "Add Tag") { Owner = this };
+                if (dlg.ShowDialog() == true && !string.IsNullOrEmpty(dlg.Answer))
                 {
-                    DatabaseHelper.AddTagToNote(id, tag);
+                    DatabaseHelper.AddTagToNote(id, dlg.Answer);
                     RefreshNotesList();
                     RefreshTagsFilter();
                 }
@@ -1453,13 +1583,14 @@ namespace StickyNotes__
 
             // Unregister hotkeys
             var wndHelper = new WindowInteropHelper(this);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9001);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9002);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9003);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9004);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9005);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9006);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9007);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyNewNote);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyScreenshot);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeySpotlight);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyBrowserTabs);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeySaveFiles);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyMeetingNote);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyQuickCapture);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyGraph);
 
             // Stop clipboard timer
             _clipboardTimer?.Stop();
