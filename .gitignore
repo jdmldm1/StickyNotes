@@ -1,0 +1,15 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / Rider
+.vs/
+*.user
+*.suo
+
+# Claude Code local settings (personal, not shared)
+.claude/settings.local.json
+
+# OS cruft
+Thumbs.db
+.DS_Store

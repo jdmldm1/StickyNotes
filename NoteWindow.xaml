@@ -1,0 +1,295 @@
+<Window x:Class="StickyNotes__.NoteWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sticky Note" Height="320" Width="300"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="CanResizeWithGrip"
+        SourceInitialized="Window_SourceInitialized"
+        Closing="Window_Closing"
+        LocationChanged="Window_LocationChanged"
+        SizeChanged="Window_SizeChanged">
+    
+    <Window.Resources>
+        <!-- Custom styled scrollbar for editor -->
+        <Style x:Key="ModernScrollBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid x:Name="Bg" SnapsToDevicePixels="true">
+                            <Track x:Name="PART_Track" IsDirectionReversed="true" IsEnabled="{TemplateBinding IsEnabled}">
+                                <Track.Thumb>
+                                    <Thumb Background="LightGray" Opacity="0.5"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="WindowBorder" CornerRadius="8" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="35"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="30"/>
+            </Grid.RowDefinitions>
+
+            <!-- Custom Header -->
+            <Border Grid.Row="0" BorderBrush="#55FFFFFF" BorderThickness="0,0,0,2">
+            <Grid x:Name="HeaderGrid" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/> <!-- Toggle Preview -->
+                    <ColumnDefinition Width="Auto"/> <!-- Toggle AI Chat -->
+                    <ColumnDefinition Width="Auto"/> <!-- Time Machine -->
+                    <ColumnDefinition Width="Auto"/> <!-- Options -->
+                    <ColumnDefinition Width="Auto"/> <!-- Close -->
+                </Grid.ColumnDefinitions>
+
+                <!-- New Note -->
+                <Button Grid.Column="0" Content="+" Click="NewButton_Click" ToolTip="New Note (Win+Alt+N)"
+                        Width="30" Height="30" Margin="5,0,0,0" Background="Transparent" BorderThickness="0"
+                        Foreground="#e0e0e0" FontSize="18" FontWeight="Bold" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                <!-- Title / Drag bar -->
+                <TextBlock Grid.Column="1" x:Name="TitleTextBlock" Text="Sticky Note"
+                            Foreground="#e0e0e0" FontSize="11" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+
+                <!-- Toggle Preview -->
+                <Button Grid.Column="2" x:Name="PreviewToggleButton" Content="👁" Click="PreviewToggleButton_Click" ToolTip="Toggle Markdown Preview"
+                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                        Foreground="#e0e0e0" FontSize="12.5" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                <!-- Toggle AI Chat -->
+                <Button Grid.Column="3" x:Name="AiChatToggleButton" Content="💬" Click="AiChatToggleButton_Click" ToolTip="AI Chat Assistant"
+                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                        Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Visibility="Collapsed"/>
+
+                <!-- Time Machine -->
+                <Button Grid.Column="4" x:Name="TimeMachineButton" Content="🕒" Click="TimeMachineButton_Click" ToolTip="Time Machine (Version History)"
+                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                        Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                <!-- Options -->
+                <Button Grid.Column="5" Content="..." Click="OptionsButton_Click" ToolTip="Options"
+                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                        Foreground="#e0e0e0" FontSize="14" FontWeight="Bold" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                <!-- Close -->
+                <Button Grid.Column="6" Content="✕" Click="CloseButton_Click" ToolTip="Close"
+                        Width="30" Height="30" Margin="0,0,5,0" Background="Transparent" BorderThickness="0"
+                        Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+            </Grid>
+            </Border>
+
+            <!-- Formatting Toolbar (Row 1) -->
+            <Border Grid.Row="1" Background="#1a1a1a" BorderBrush="#2a2a2a" BorderThickness="0,0,0,1" Padding="5,3">
+                <WrapPanel Orientation="Horizontal">
+                    <!-- Text Style Group -->
+                    <Button Width="26" Height="24" Click="FormatBold_Click" ToolTip="Bold (Ctrl+B)" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="B" FontWeight="Bold" FontSize="12" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="26" Height="24" Click="FormatItalic_Click" ToolTip="Italic (Ctrl+I)" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="I" FontStyle="Italic" FontSize="12" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="26" Height="24" Click="FormatUnderline_Click" ToolTip="Underline (Ctrl+U)" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="U" TextDecorations="Underline" FontSize="12" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="26" Height="24" Click="FormatStrikethrough_Click" ToolTip="Strikethrough" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="S" TextDecorations="Strikethrough" FontSize="12" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="26" Height="24" Click="FormatHighlight_Click" ToolTip="Highlight" Background="Transparent" BorderThickness="0" Foreground="#FFD700" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x2590;" FontSize="13"/>
+                    </Button>
+
+                    <!-- Separator -->
+                    <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                    <!-- Block Style Group -->
+                    <Button Width="30" Height="24" Click="FormatHeading_Click" ToolTip="Heading" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="H1" FontWeight="Bold" FontSize="10" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="34" Height="24" Click="FormatCodeBlock_Click" ToolTip="Code Block" Background="Transparent" BorderThickness="0" Foreground="#a8ff78" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&lt;/&gt;" FontFamily="Consolas" FontSize="10"/>
+                    </Button>
+
+                    <!-- Separator -->
+                    <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                    <!-- List and Insert Group -->
+                    <Button Width="28" Height="24" Click="FormatBulletList_Click" ToolTip="Bullet List" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x2261;" FontSize="15" Margin="0,-1,0,0"/>
+                    </Button>
+                    <Button Width="28" Height="24" Click="InsertCheckbox_Click" ToolTip="Insert Checkbox / Task item" Background="Transparent" BorderThickness="0" Foreground="#88ff88" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x2611;" FontSize="13"/>
+                    </Button>
+                    <Button Width="28" Height="24" Click="InsertHyperlink_Click" ToolTip="Insert Hyperlink" Background="Transparent" BorderThickness="0" Foreground="#4db8ff" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x1F517;" FontSize="11"/>
+                    </Button>
+                </WrapPanel>
+            </Border>
+
+            <!-- Note Workspace & AI Chat Grid (Grid.Row="2") -->
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Note Editor Area (Row 0) -->
+                <ScrollViewer x:Name="EditorScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              AllowDrop="True" DragEnter="Editor_DragEnter" DragLeave="Editor_DragLeave" DragOver="Editor_DragOver" Drop="Editor_Drop">
+                    <StackPanel>
+                        <!-- Image -->
+                        <Border x:Name="ImageBorder" MaxHeight="140" Margin="10,5,10,0" CornerRadius="4" ClipToBounds="True" Visibility="Collapsed">
+                            <Image x:Name="NoteImage" Stretch="Uniform"/>
+                        </Border>
+
+                        <!-- File Attachments -->
+                        <WrapPanel x:Name="AttachmentsPanel" Margin="10,5,10,0" Orientation="Horizontal"/>
+
+                        <!-- Drag & Drop Hint Overlay -->
+                        <Border x:Name="DropHintBorder" Margin="10,5,10,0" Padding="10,8" CornerRadius="6"
+                                Background="#1a0084ff" BorderBrush="#0084ff" BorderThickness="1"
+                                Visibility="Collapsed" IsHitTestVisible="False">
+                            <TextBlock Text="📎 Drop files here to attach" Foreground="#0084ff" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        </Border>
+
+                        <!-- Text Editor -->
+                        <RichTextBox x:Name="NoteRichTextBox" Margin="10" MinHeight="100" Background="Transparent"
+                                     BorderThickness="0" Foreground="#ffffff" CaretBrush="White"
+                                     FontFamily="Segoe UI Variable Text, Segoe UI, sans-serif" FontSize="14"
+                                     TextChanged="NoteRichTextBox_TextChanged"
+                                     SelectionChanged="NoteRichTextBox_SelectionChanged"
+                                     PreviewKeyDown="NoteRichTextBox_PreviewKeyDown"
+                                     PreviewMouseLeftButtonDown="NoteRichTextBox_PreviewMouseLeftButtonDown"
+                                     AcceptsReturn="True" AcceptsTab="True"
+                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Markdown Preview Area (Row 0 - overlays Editor) -->
+                <FlowDocumentScrollViewer x:Name="MarkdownPreviewViewer" Grid.Row="0" Visibility="Collapsed"
+                                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          Background="Transparent"/>
+
+                <!-- AI Chat Panel (Row 1 - Collapsed by default) -->
+                <Border x:Name="AiChatPanel" Grid.Row="1" Height="160" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Chat History -->
+                        <ScrollViewer x:Name="ChatScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="10">
+                            <StackPanel x:Name="ChatHistoryPanel"/>
+                        </ScrollViewer>
+
+                        <!-- Input Bar -->
+                        <Grid Grid.Row="1" Margin="8,4,8,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="AiPromptTextBox" Grid.Column="0" Background="#262626" Foreground="#ffffff" BorderBrush="#333333" BorderThickness="1" Padding="8,4" FontSize="12" CaretBrush="White" KeyDown="AiPromptTextBox_KeyDown"/>
+                            <Button Grid.Column="1" Content="Send" Click="SendAiPrompt_Click" Padding="12,4" Margin="5,0,0,0" Background="#0084ff" Foreground="#ffffff" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="4"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- Time Machine Panel (Row 1 - Collapsed by default) -->
+                <Border x:Name="TimeMachinePanel" Grid.Row="1" Height="160" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed" Padding="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Header -->
+                        <Grid Grid.Row="0" Margin="0,0,0,5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Version History" Foreground="#ffffff" FontSize="11.5" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="✕" Click="CloseTimeMachine_Click" Background="Transparent" BorderThickness="0" Foreground="#a0a0a0" FontSize="11" Cursor="Hand"/>
+                        </Grid>
+
+                        <!-- Versions List -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="HistoryVersionsPanel"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Bottom Bar (Category, Tags & Resize Grip) -->
+            <Grid Grid.Row="3" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="20"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Category Dropdown -->
+                <ComboBox Grid.Column="0" x:Name="CategoryComboBox" SelectionChanged="CategoryComboBox_SelectionChanged"
+                          ToolTip="Change Category"
+                          Margin="10,0,6,0" Padding="5,1" FontSize="9.5" MinWidth="66" MaxWidth="110"
+                          Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"/>
+
+                <!-- Tags List -->
+                <TextBlock Grid.Column="1" x:Name="TagsTextBlock" Text="No tags"
+                           Foreground="#A0ffffff" FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+
+                <!-- AI Quick Format -->
+                <Button Grid.Column="2" x:Name="AiFormatButton" Content="🔷" Click="AiFormatButton_Click" ToolTip="AI Quick Format"
+                        Padding="6,1" Background="#20ffffff" Foreground="#ffffff" FontSize="10" BorderThickness="0" Cursor="Hand" Margin="0,0,5,0" Visibility="Collapsed"/>
+
+                <!-- Add Tag -->
+                <Button Grid.Column="3" Content="+ Tag" Click="AddTagButton_Click"
+                        Padding="5,1" Background="#20ffffff" Foreground="#ffffff" FontSize="9" BorderThickness="0" Cursor="Hand"/>
+            </Grid>
+
+            <!-- Floating Rich Text Formatting Toolbar -->
+            <Popup x:Name="FormatToolbarPopup" AllowsTransparency="True" Placement="RelativePoint" StaysOpen="True" VerticalOffset="-35" HorizontalOffset="0">
+                <Border Background="#E6262626" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="6" Padding="4">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="Black" Opacity="0.4"/>
+                    </Border.Effect>
+                    <StackPanel Orientation="Horizontal">
+                        <Button FontWeight="Bold" Width="24" Height="24" Click="FormatBold_Click" ToolTip="Bold" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                            <TextBlock Text="B" FontWeight="Bold"/>
+                        </Button>
+                        <Button Width="24" Height="24" Click="FormatItalic_Click" ToolTip="Italic" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                            <TextBlock Text="I" FontStyle="Italic"/>
+                        </Button>
+                        <Button Width="24" Height="24" Click="FormatUnderline_Click" ToolTip="Underline" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                            <TextBlock Text="U" TextDecorations="Underline"/>
+                        </Button>
+                        <Button Width="24" Height="24" Click="FormatStrikethrough_Click" ToolTip="Strikethrough" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                            <TextBlock Text="S" TextDecorations="Strikethrough"/>
+                        </Button>
+                        <Button Content="🖌" Width="24" Height="24" Click="FormatHighlight_Click" ToolTip="Highlight Text" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                    </StackPanel>
+                </Border>
+            </Popup>
+        </Grid>
+    </Border>
+</Window>

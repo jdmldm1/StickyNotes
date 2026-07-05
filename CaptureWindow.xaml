@@ -1,0 +1,25 @@
+<Window x:Class="StickyNotes__.CaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Capture Screenshot"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" WindowState="Maximized" Cursor="Cross"
+        Loaded="Window_Loaded" KeyDown="Window_KeyDown"
+        MouseDown="Window_MouseDown" MouseMove="Window_MouseMove" MouseUp="Window_MouseUp">
+    <Grid x:Name="LayoutRoot">
+        <!-- We use Canvas to dynamically position visual elements -->
+        <Canvas x:Name="CaptureCanvas">
+            <!-- Fullscreen screen capture -->
+            <Image x:Name="BackgroundImage" Stretch="None"/>
+            
+            <!-- Semi-transparent overlay to dim the screen -->
+            <Rectangle x:Name="DimOverlay" Fill="#60000000"/>
+            
+            <!-- Cropped screenshot segment displaying over the dim layer -->
+            <Image x:Name="CroppedImageDisplay" Stretch="None" Visibility="Collapsed"/>
+            
+            <!-- Selection border rectangle -->
+            <Rectangle x:Name="SelectionBorder" Stroke="#0084ff" StrokeThickness="2" Visibility="Collapsed"/>
+        </Canvas>
+    </Grid>
+</Window>

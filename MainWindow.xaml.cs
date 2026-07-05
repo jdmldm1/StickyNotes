@@ -1,0 +1,1622 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+
+
+namespace StickyNotes__
+{
+    public partial class MainWindow : Window
+    {
+        private Win32Helper.APPBARDATA _appBarData;
+        private bool _isAppBarRegistered;
+        private string? _selectedTagFilter;
+        private System.Windows.Forms.NotifyIcon? _notifyIcon;
+        private SpotlightWindow? _spotlightWnd;
+        private string _sortOrder = "date"; // "date" or "category"
+
+
+
+        // Clipboard History fields
+        private System.Windows.Threading.DispatcherTimer? _clipboardTimer;
+        private readonly List<ClipboardHistoryItem> _clipboardHistory = new List<ClipboardHistoryItem>();
+        private string _lastClipboardText = "";
+        private BitmapSource? _lastClipboardImage = null;
+
+        // Active floating note windows
+        private readonly Dictionary<int, NoteWindow> _openNoteWindows = new Dictionary<int, NoteWindow>();
+
+        public MainWindow()
+        {
+            InitializeComponent();
+            DatabaseHelper.InitDatabase();
+            InitializeNotifyIcon();
+            StartClipboardMonitor();
+        }
+
+        private void InitializeNotifyIcon()
+        {
+            _notifyIcon = new System.Windows.Forms.NotifyIcon();
+            _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+            _notifyIcon.Text = "StickyNotes++";
+            _notifyIcon.Visible = true;
+            _notifyIcon.DoubleClick += (s, e) => RestoreFromTray();
+
+            var contextMenu = new System.Windows.Forms.ContextMenuStrip();
+            
+            var openItem = new System.Windows.Forms.ToolStripMenuItem("Open StickyNotes++");
+            openItem.Click += (s, e) => RestoreFromTray();
+            contextMenu.Items.Add(openItem);
+            
+            var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit");
+            exitItem.Click += (s, e) => ExitApplication();
+            contextMenu.Items.Add(exitItem);
+
+            _notifyIcon.ContextMenuStrip = contextMenu;
+        }
+
+        private void RestoreFromTray()
+        {
+            this.Show();
+            this.WindowState = WindowState.Normal;
+            this.Activate();
+        }
+
+        private void ExitApplication()
+        {
+            _notifyIcon?.Dispose();
+            _notifyIcon = null;
+
+            var openWindows = new List<NoteWindow>(_openNoteWindows.Values);
+            foreach (var noteWnd in openWindows)
+            {
+                try { noteWnd.Close(); } catch {}
+            }
+
+            Application.Current.Shutdown();
+        }
+
+        protected override void OnStateChanged(EventArgs e)
+        {
+            if (this.WindowState == WindowState.Minimized)
+            {
+                this.Hide();
+            }
+            base.OnStateChanged(e);
+        }
+
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            _notifyIcon?.Dispose();
+            base.OnClosing(e);
+        }
+
+        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            this.WindowState = WindowState.Minimized;
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            ExitApplication();
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            RefreshNotesList();
+            RefreshTagsFilter();
+            LoadSavedOpacity();
+        }
+
+        public void ApplySidebarOpacity(double opacity)
+        {
+            opacity = Math.Max(0.2, Math.Min(1.0, opacity));
+            byte alpha = (byte)(opacity * 255);
+            // #121212 base color
+            MainWindowBorder.Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(alpha, 0x12, 0x12, 0x12));
+        }
+
+        private void LoadSavedOpacity()
+        {
+            try
+            {
+                if (System.IO.File.Exists(AppConfig.SettingsPath))
+                {
+                    string json = System.IO.File.ReadAllText(AppConfig.SettingsPath);
+                    var config = System.Text.Json.JsonSerializer.Deserialize<AppConfigData>(json);
+                    if (config != null && config.SidebarOpacity > 0)
+                        ApplySidebarOpacity(config.SidebarOpacity);
+                }
+            }
+            catch { }
+        }
+
+        private void Window_SourceInitialized(object sender, EventArgs e)
+        {
+            var wndHelper = new WindowInteropHelper(this);
+            HwndSource source = HwndSource.FromHwnd(wndHelper.Handle);
+            source.AddHook(WndProcHook);
+
+            _spotlightWnd = new SpotlightWindow(this);
+
+            // Snapping Right (AppBar)
+            RegisterAppBar();
+
+            // Register Hotkeys
+            // Win+Alt+N for New Note (ID 9001)
+            // Win+Alt+S for Screenshot (ID 9002)
+            // Win+Alt+Space for Spotlight (ID 9003)
+            // Win+Alt+T for Save Browser Tabs (ID 9004)
+            // Win+Alt+F for Save Files to a New Note (ID 9005)
+            // Win+Alt+M for Quick Meeting Note (ID 9006)
+            Win32Helper.RegisterHotKey(wndHelper.Handle, 9001, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E); // 0x4E = 'N'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, 9002, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53); // 0x53 = 'S'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, 9003, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20); // 0x20 = Space
+            Win32Helper.RegisterHotKey(wndHelper.Handle, 9004, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54); // 0x54 = 'T'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, 9005, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46); // 0x46 = 'F'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, 9006, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // 0x4D = 'M'
+
+            // Note: intentionally NOT enabling the Mica backdrop here. Mica composites its own
+            // blurred/tinted wallpaper sample underneath the window, which fights with the sidebar
+            // opacity slider (ApplySidebarOpacity only controls a plain WPF alpha color) -- lowering
+            // opacity produced a muted haze instead of real see-through transparency. Leaving Mica
+            // off lets AllowsTransparency blend the Border's alpha directly against the desktop, so
+            // the slider actually makes the sidebar transparent as expected.
+            Win32Helper.DwmSetWindowAttribute(wndHelper.Handle, Win32Helper.DWMWA_USE_IMMERSIVE_DARK_MODE, ref _darkModeValue, sizeof(int));
+        }
+
+        private int _darkModeValue = 1;
+
+        private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_HOTKEY = 0x0312;
+            const int WM_ACTIVATE = 0x0006;
+
+            if (msg == WM_HOTKEY)
+            {
+                int id = wParam.ToInt32();
+                if (id == 9001)
+                {
+                    CreateNewNote();
+                    handled = true;
+                }
+                else if (id == 9002)
+                {
+                    TakeRegionScreenshot();
+                    handled = true;
+                }
+                else if (id == 9003)
+                {
+                    ToggleSpotlight();
+                    handled = true;
+                }
+                else if (id == 9004)
+                {
+                    SaveBrowserTabs();
+                    handled = true;
+                }
+                else if (id == 9005)
+                {
+                    SaveFilesToNewNote();
+                    handled = true;
+                }
+                else if (id == 9006)
+                {
+                    CreateQuickMeetingNote();
+                    handled = true;
+                }
+            }
+            else if (msg == WM_ACTIVATE)
+            {
+                // Let AppBar know the window activated
+                if (_isAppBarRegistered)
+                {
+                    Win32Helper.SHAppBarMessage(Win32Helper.ABM_SETPOS, ref _appBarData);
+                }
+            }
+
+            return IntPtr.Zero;
+        }
+
+        #region AppBar Implementation
+
+        private void RegisterAppBar()
+        {
+            var wndHelper = new WindowInteropHelper(this);
+            _appBarData = new Win32Helper.APPBARDATA();
+            _appBarData.cbSize = Marshal.SizeOf(typeof(Win32Helper.APPBARDATA));
+            _appBarData.hWnd = wndHelper.Handle;
+            _appBarData.uCallbackMessage = 0x8000 + 101; // WM_USER + 101
+            _appBarData.uEdge = Win32Helper.ABE_RIGHT;
+
+            Win32Helper.SHAppBarMessage(Win32Helper.ABM_NEW, ref _appBarData);
+            _isAppBarRegistered = true;
+
+            SetAppBarPosition();
+        }
+
+        private void UnregisterAppBar()
+        {
+            if (_isAppBarRegistered)
+            {
+                Win32Helper.SHAppBarMessage(Win32Helper.ABM_REMOVE, ref _appBarData);
+                _isAppBarRegistered = false;
+            }
+        }
+
+        private void SetAppBarPosition()
+        {
+            if (!_isAppBarRegistered) return;
+
+            var wndHelper = new WindowInteropHelper(this);
+            
+            // Query screen monitor metrics
+            int screenWidth = (int)SystemParameters.PrimaryScreenWidth;
+            int screenHeight = (int)SystemParameters.PrimaryScreenHeight;
+
+            _appBarData.rc.Left = screenWidth - 350;
+            _appBarData.rc.Top = 0;
+            _appBarData.rc.Right = screenWidth;
+            _appBarData.rc.Bottom = screenHeight;
+
+            Win32Helper.SHAppBarMessage(Win32Helper.ABM_QUERYPOS, ref _appBarData);
+            Win32Helper.SHAppBarMessage(Win32Helper.ABM_SETPOS, ref _appBarData);
+
+            Win32Helper.SetWindowPos(
+                wndHelper.Handle,
+                IntPtr.Zero,
+                _appBarData.rc.Left,
+                _appBarData.rc.Top,
+                _appBarData.rc.Right - _appBarData.rc.Left,
+                _appBarData.rc.Bottom - _appBarData.rc.Top,
+                0
+            );
+        }
+
+        #endregion
+
+        #region Note Commands
+
+        public void CreateNewNote()
+        {
+            int noteId = DatabaseHelper.CreateNote("", "", null, null, "yellow");
+            RefreshNotesList();
+        }
+
+        private void ToggleSpotlight()
+        {
+            if (_spotlightWnd == null) return;
+
+            if (_spotlightWnd.IsVisible)
+            {
+                _spotlightWnd.Hide();
+            }
+            else
+            {
+                _spotlightWnd.Show();
+                _spotlightWnd.Activate();
+                _spotlightWnd.FocusSearch();
+            }
+        }
+
+        public void OpenNoteWindow(int noteId)
+        {
+            if (_openNoteWindows.TryGetValue(noteId, out NoteWindow? openWindow))
+            {
+                openWindow.Activate();
+                if (openWindow.WindowState == WindowState.Minimized)
+                    openWindow.WindowState = WindowState.Normal;
+                return;
+            }
+
+            var noteWindow = new NoteWindow(noteId);
+            noteWindow.Show();
+            _openNoteWindows.Add(noteId, noteWindow);
+        }
+
+        public void NotifyNoteWindowClosed(int noteId)
+        {
+            _openNoteWindows.Remove(noteId);
+            RefreshNotesList();
+            RefreshTagsFilter();
+        }
+
+        private static readonly Dictionary<string, bool> _expanderStates = new Dictionary<string, bool>();
+
+        public void RefreshNotesList()
+        {
+            if (NotesGroupPanel == null) return;
+            NotesGroupPanel.Children.Clear();
+
+            string searchQuery = SearchTextBox.Text.Trim();
+            var notes = DatabaseHelper.ListNotes(
+                string.IsNullOrEmpty(searchQuery) ? null : searchQuery, 
+                _selectedTagFilter
+            );
+
+            // Sort by UpdatedAt newest first
+            var sortedNotes = notes.OrderByDescending(n => n.UpdatedAt).ToList();
+
+            var viewModels = sortedNotes.Select(n => new NoteCardViewModel
+            {
+                Id = n.Id,
+                Title = n.Title,
+                Color = n.Color,
+                Snippet = GetPlainTextFromXaml(n.Content),
+                ImagePath = n.ImagePath,
+                Tags = DatabaseHelper.GetNoteTags(n.Id),
+                Category = n.Category ?? "General",
+                QuickOpenItems = BuildQuickOpenItems(n)
+            }).ToList();
+
+            var template = (DataTemplate)this.FindResource("NoteCardTemplate");
+
+            if (_sortOrder == "category")
+            {
+                // Group by category, sorting General category last
+                var groups = viewModels
+                    .GroupBy(vm => vm.Category)
+                    .OrderBy(g => g.Key == "General" ? 1 : 0)
+                    .ThenBy(g => g.Key)
+                    .ToList();
+
+                foreach (var group in groups)
+                {
+                    string categoryName = group.Key;
+                    var groupItems = group.ToList();
+
+                    var expander = new Expander
+                    {
+                        Header = $"{categoryName} ({groupItems.Count})",
+                        Foreground = Brushes.White,
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12.5,
+                        Margin = new Thickness(0, 0, 0, 12),
+                        Background = Brushes.Transparent,
+                        BorderThickness = new Thickness(0)
+                    };
+
+                    // Track and restore expander state
+                    expander.IsExpanded = !_expanderStates.ContainsKey(categoryName) || _expanderStates[categoryName];
+                    expander.Expanded += (s, e) => _expanderStates[categoryName] = true;
+                    expander.Collapsed += (s, e) => _expanderStates[categoryName] = false;
+
+                    var itemsControl = new ItemsControl
+                    {
+                        ItemTemplate = template,
+                        ItemsSource = groupItems,
+                        Margin = new Thickness(6, 8, 0, 0)
+                    };
+
+                    expander.Content = itemsControl;
+                    NotesGroupPanel.Children.Add(expander);
+                }
+            }
+            else
+            {
+                // Flat chronological list
+                var itemsControl = new ItemsControl
+                {
+                    ItemTemplate = template,
+                    ItemsSource = viewModels
+                };
+                NotesGroupPanel.Children.Add(itemsControl);
+            }
+        }
+
+        private async void AutoOrganizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            AutoOrganizeButton.IsEnabled = false;
+            string originalContent = AutoOrganizeButton.Content.ToString() ?? "🪄 Auto Organize";
+            AutoOrganizeButton.Content = "🪄 Organizing...";
+
+            try
+            {
+                if (!await AiHelper.IsOllamaRunningAsync())
+                {
+                    MessageBox.Show("Please start Ollama (local AI service) to use the Auto Organizer.", "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var notes = DatabaseHelper.ListNotes(null, null);
+                if (notes.Count == 0)
+                {
+                    MessageBox.Show("No notes found to organize.", "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var sb = new StringBuilder();
+                sb.AppendLine("You are a system organizer. Group these notes into 3 to 5 logical category names (e.g. Work, Personal, Code, Finance). Also, assign 1 to 3 relevant, brief tags to each note.");
+                sb.AppendLine("Respond with ONLY a raw JSON object where keys are note IDs (as strings) and values are objects containing 'category' (string) and 'tags' (array of strings).");
+                sb.AppendLine("Example format:");
+                sb.AppendLine("{\n  \"1\": { \"category\": \"Work\", \"tags\": [\"deadline\", \"invoice\"] }\n}");
+                sb.AppendLine("Do not include any explanations, markdown code blocks, backticks, or formatting. Strictly JSON.");
+                sb.AppendLine("Notes list:");
+                foreach (var note in notes)
+                {
+                    string plain = GetPlainTextFromXaml(note.Content);
+                    if (plain.Length > 80) plain = plain.Substring(0, 80);
+                    sb.AppendLine($"ID: {note.Id} | Title: {note.Title} | Snippet: {plain}");
+                }
+
+                string response = await AiHelper.GenerateTextAsync(sb.ToString());
+                if (string.IsNullOrEmpty(response))
+                {
+                    MessageBox.Show("AI did not respond. Check if Ollama is active.", "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Try to extract JSON from response (handling potential code block wraps)
+                int firstBrace = response.IndexOf('{');
+                int lastBrace = response.LastIndexOf('}');
+                if (firstBrace == -1 || lastBrace == -1)
+                {
+                    MessageBox.Show("Could not parse AI response: JSON structure not found.", "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                string json = response.Substring(firstBrace, lastBrace - firstBrace + 1);
+                bool wasTruncated = false;
+                Dictionary<string, NoteOrganizationResult>? mappings;
+                try
+                {
+                    mappings = JsonSerializer.Deserialize<Dictionary<string, NoteOrganizationResult>>(json);
+                }
+                catch (JsonException)
+                {
+                    // Smaller/faster models (e.g. llama3.2:1b) sometimes cut the response off
+                    // mid-object once many notes are involved. Try to recover by trimming back
+                    // to the last fully-closed note entry and re-closing the object there,
+                    // rather than losing the whole batch to one truncated entry.
+                    string? repaired = TryRepairTruncatedJsonObject(json);
+                    mappings = repaired != null ? TryDeserializeMappings(repaired) : null;
+                    wasTruncated = mappings != null;
+                }
+
+                if (mappings == null)
+                {
+                    MessageBox.Show(
+                        "The AI's response wasn't valid JSON, so no notes were organized. This is more common with smaller/faster models -- try again, or switch to a larger model in Settings for more reliable results.",
+                        "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                foreach (var pair in mappings)
+                {
+                    if (int.TryParse(pair.Key, out int noteId))
+                    {
+                        var note = notes.FirstOrDefault(n => n.Id == noteId);
+                        if (note != null)
+                        {
+                            note.Category = pair.Value.category?.Trim() ?? "General";
+                            DatabaseHelper.UpdateNote(note);
+
+                            // Clear existing tags and add new ones
+                            DatabaseHelper.ClearNoteTags(noteId);
+                            if (pair.Value.tags != null)
+                            {
+                                foreach (var tag in pair.Value.tags)
+                                {
+                                    DatabaseHelper.AddTagToNote(noteId, tag);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                RefreshNotesList();
+                RefreshTagsFilter();
+
+                if (wasTruncated || mappings.Count < notes.Count)
+                {
+                    MessageBox.Show(
+                        $"Organized {mappings.Count} of {notes.Count} notes. The AI's response was incomplete (common with smaller/faster models) -- run Auto Organize again to catch the rest.",
+                        "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                else
+                {
+                    MessageBox.Show("Notes successfully organized and tagged!", "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Organization error: {ex.Message}", "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                AutoOrganizeButton.IsEnabled = true;
+                AutoOrganizeButton.Content = originalContent;
+            }
+        }
+
+        private static Dictionary<string, NoteOrganizationResult>? TryDeserializeMappings(string json)
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<Dictionary<string, NoteOrganizationResult>>(json);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        // Scans a (possibly truncated) top-level JSON object and, if the tail got cut off
+        // mid-entry, trims back to the last fully-closed "key": {...} entry and re-closes the
+        // object there. Returns null if no complete entry could be found at all.
+        private static string? TryRepairTruncatedJsonObject(string json)
+        {
+            int depth = 0;
+            bool inString = false;
+            bool escape = false;
+            int lastCompleteEntryEnd = -1;
+
+            for (int i = 0; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (escape) { escape = false; continue; }
+                if (c == '\\' && inString) { escape = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+
+                if (c == '{' || c == '[')
+                {
+                    depth++;
+                }
+                else if (c == '}' || c == ']')
+                {
+                    depth--;
+                    if (depth == 1) lastCompleteEntryEnd = i;
+                }
+            }
+
+            if (lastCompleteEntryEnd <= 0) return null;
+            return json.Substring(0, lastCompleteEntryEnd + 1) + "}";
+        }
+
+        private string GetPlainTextFromXaml(string xaml) => NoteContentHelper.ExtractPlainText(xaml);
+
+        private static List<QuickOpenItem> BuildQuickOpenItems(Note note)
+        {
+            var items = new List<QuickOpenItem>();
+
+            foreach (var attachment in DatabaseHelper.GetNoteAttachments(note.Id))
+            {
+                items.Add(new QuickOpenItem { Label = attachment.FileName, Target = attachment.FilePath, IsFile = true });
+            }
+
+            foreach (var (label, url) in NoteContentHelper.ExtractHyperlinks(note.Content))
+            {
+                items.Add(new QuickOpenItem { Label = string.IsNullOrWhiteSpace(label) ? url : label, Target = url, IsFile = false });
+            }
+
+            return items;
+        }
+
+        private void QuickOpenButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement element || element.DataContext is not NoteCardViewModel vm) return;
+            if (vm.QuickOpenItems.Count == 0) return;
+
+            if (vm.QuickOpenItems.Count == 1)
+            {
+                OpenQuickOpenItem(vm.QuickOpenItems[0]);
+                return;
+            }
+
+            var menu = new ContextMenu();
+            foreach (var item in vm.QuickOpenItems)
+            {
+                var menuItem = new MenuItem { Header = $"{(item.IsFile ? "📎" : "🔗")} {item.Label}" };
+                var captured = item;
+                menuItem.Click += (s, args) => OpenQuickOpenItem(captured);
+                menu.Items.Add(menuItem);
+            }
+            menu.PlacementTarget = element;
+            menu.IsOpen = true;
+        }
+
+        private static void OpenQuickOpenItem(QuickOpenItem item)
+        {
+            if (item.IsFile && !File.Exists(item.Target))
+            {
+                MessageBox.Show("This file no longer exists on disk.", "File Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            try
+            {
+                Process.Start(new ProcessStartInfo(item.Target) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Couldn't open: {ex.Message}", "Open Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private void RefreshTagsFilter()
+        {
+            TagsFilterPanel.Children.Clear();
+
+            // Clear filter button
+            var allButton = new Button
+            {
+                Content = "All",
+                Margin = new Thickness(0, 0, 6, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                Background = string.IsNullOrEmpty(_selectedTagFilter) ? new SolidColorBrush(Color.FromRgb(0, 132, 255)) : new SolidColorBrush(Color.FromRgb(26, 26, 26)),
+                Foreground = Brushes.White,
+                BorderThickness = new Thickness(0),
+                FontSize = 11,
+                Cursor = Cursors.Hand
+            };
+            allButton.Click += (s, e) => { _selectedTagFilter = null; RefreshTagsFilter(); RefreshNotesList(); };
+            TagsFilterPanel.Children.Add(allButton);
+
+            var tags = DatabaseHelper.ListAllTags();
+            foreach (var tag in tags)
+            {
+                var tagBtn = new Button
+                {
+                    Content = $"#{tag}",
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Padding = new Thickness(12, 4, 12, 4),
+                    Background = _selectedTagFilter == tag ? new SolidColorBrush(Color.FromRgb(0, 132, 255)) : new SolidColorBrush(Color.FromRgb(26, 26, 26)),
+                    Foreground = Brushes.White,
+                    BorderThickness = new Thickness(0),
+                    FontSize = 11,
+                    Cursor = Cursors.Hand
+                };
+                string currentTag = tag;
+                tagBtn.Click += (s, e) =>
+                {
+                    _selectedTagFilter = currentTag;
+                    RefreshTagsFilter();
+                    RefreshNotesList();
+                };
+                TagsFilterPanel.Children.Add(tagBtn);
+            }
+        }
+
+        private async void TakeRegionScreenshot()
+        {
+            // Minimize current main sidebar temporarily to avoid taking it in screenshot
+            this.WindowState = WindowState.Minimized;
+            
+            // Wait 350ms for minimize animation to complete
+            await System.Threading.Tasks.Task.Delay(350);
+
+            try
+            {
+                var captureWnd = new CaptureWindow();
+                bool? dialogResult = null;
+                try
+                {
+                    dialogResult = captureWnd.ShowDialog();
+                }
+                catch (Exception ex)
+                {
+                    this.WindowState = WindowState.Normal;
+                    this.Activate();
+                    MessageBox.Show($"Capture window error: {ex.Message}", "Screensnip", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                if (dialogResult == true && !string.IsNullOrEmpty(captureWnd.CapturedImagePath))
+                {
+                    string imagePath = captureWnd.CapturedImagePath;
+
+                    // Restore sidebar
+                    this.WindowState = WindowState.Normal;
+                    this.Activate();
+
+                    // Run local OCR (with fallback on failure)
+                    string ocrText = "";
+                    List<string> ocrTags = new List<string>();
+                    try
+                    {
+                        var ocrResult = await OcrHelper.PerformOcrAsync(imagePath);
+                        ocrText = ocrResult.Text ?? "";
+                        ocrTags = ocrResult.Tags ?? new List<string>();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"OCR failed (non-fatal): {ex.Message}");
+                    }
+
+                    // Create new note with screenshot details
+                    int noteId = DatabaseHelper.CreateNote(
+                        "Screenshot note", 
+                        "", 
+                        imagePath, 
+                        ocrText, 
+                        "yellow"
+                    );
+
+                    // Add auto tags (regex + Ollama AI if running)
+                    var tags = new HashSet<string>(ocrTags);
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(ocrText) && await AiHelper.IsOllamaRunningAsync())
+                        {
+                            var aiTags = await AiHelper.AutoTagTextAsync(ocrText);
+                            foreach (var tag in aiTags)
+                            {
+                                tags.Add(tag.Trim().ToLower());
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"AI tagging failed (non-fatal): {ex.Message}");
+                    }
+
+                    foreach (var tag in tags)
+                    {
+                        if (!string.IsNullOrWhiteSpace(tag))
+                            DatabaseHelper.AddTagToNote(noteId, tag);
+                    }
+
+                    OpenNoteWindow(noteId);
+                    RefreshNotesList();
+                    RefreshTagsFilter();
+                }
+                else
+                {
+                    // Restore sidebar if cancelled
+                    this.WindowState = WindowState.Normal;
+                    this.Activate();
+                }
+            }
+            catch (Exception ex)
+            {
+                this.WindowState = WindowState.Normal;
+                this.Activate();
+                MessageBox.Show($"Screensnip error: {ex.Message}", "Screensnip", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void SaveBrowserTabs()
+        {
+            List<BrowserTab> tabs;
+            try
+            {
+                tabs = BrowserTabHelper.GetOpenTabs();
+            }
+            catch (Exception ex)
+            {
+                ShowStatusToast("Couldn't read browser tabs: " + ex.Message);
+                return;
+            }
+
+            if (tabs.Count == 0)
+            {
+                ShowStatusToast("No open Chrome or Edge tabs found.");
+                return;
+            }
+
+            foreach (var tab in tabs)
+            {
+                string xamlContent = BuildHyperlinkNoteXaml(tab.Title, tab.Url);
+                int noteId = DatabaseHelper.CreateNote(tab.Title, xamlContent, null, null, "blue");
+                DatabaseHelper.AddTagToNote(noteId, "Browser Tab");
+            }
+
+            RefreshNotesList();
+            RefreshTagsFilter();
+            ShowStatusToast($"Saved {tabs.Count} browser tab{(tabs.Count == 1 ? "" : "s")}");
+        }
+
+        private static string BuildHyperlinkNoteXaml(string title, string url)
+        {
+            var titleParagraph = new Paragraph(new Run(title)) { FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) };
+
+            var linkParagraph = new Paragraph { Margin = new Thickness(0) };
+            var hyperlink = new Hyperlink(new Run(url))
+            {
+                NavigateUri = new Uri(url),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x4d, 0xb8, 0xff))
+            };
+            linkParagraph.Inlines.Add(hyperlink);
+
+            // See BuildMeetingNoteXaml for why this explicit Foreground/FontFamily is required.
+            var document = new FlowDocument(titleParagraph)
+            {
+                Foreground = Brushes.White,
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, sans-serif")
+            };
+            document.Blocks.Add(linkParagraph);
+
+            var range = new TextRange(document.ContentStart, document.ContentEnd);
+            return NoteContentHelper.SaveRange(range);
+        }
+
+        private void SaveFilesToNewNote()
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select files to save as a note",
+                Multiselect = true,
+                CheckFileExists = true
+            };
+            if (dialog.ShowDialog(this) != true) return;
+
+            string[] filePaths = dialog.FileNames;
+            if (filePaths.Length == 0) return;
+
+            string title = filePaths.Length == 1
+                ? System.IO.Path.GetFileNameWithoutExtension(filePaths[0])
+                : $"{filePaths.Length} Files";
+
+            int noteId = DatabaseHelper.CreateNote(title, "", null, null, "yellow");
+            int attachedCount = 0;
+            foreach (var path in filePaths)
+            {
+                try
+                {
+                    DatabaseHelper.AddAttachment(noteId, path);
+                    attachedCount++;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Couldn't attach \"{System.IO.Path.GetFileName(path)}\": {ex.Message}", "Attach Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            DatabaseHelper.AddTagToNote(noteId, "Files");
+
+            RefreshNotesList();
+            RefreshTagsFilter();
+            OpenNoteWindow(noteId);
+            ShowStatusToast($"Saved {attachedCount} file{(attachedCount == 1 ? "" : "s")} to a new note");
+        }
+
+        private void CreateQuickMeetingNote()
+        {
+            var dialog = new InputDialog("Enter the meeting title:", "New Meeting Note") { Owner = this };
+            if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Answer))
+                return;
+
+            DateTime now = DateTime.Now;
+            string title = $"Meeting - {dialog.Answer.Trim()} ({now:MMM d, yyyy})";
+            string contentXaml = BuildMeetingNoteXaml(title, now);
+
+            int noteId = DatabaseHelper.CreateNote(title, contentXaml, null, null, "blue");
+
+            var note = DatabaseHelper.GetNote(noteId);
+            if (note != null)
+            {
+                note.Category = "Meetings";
+                // Meeting notes have several sections (Date/Time, Attendees, Discussions, Action
+                // Items) that don't fit comfortably in the app's default 300x320 note size, so open
+                // them noticeably larger from the start.
+                note.W = 420;
+                note.H = 520;
+                DatabaseHelper.UpdateNote(note);
+            }
+            DatabaseHelper.AddTagToNote(noteId, "meeting");
+
+            RefreshNotesList();
+            RefreshTagsFilter();
+            OpenNoteWindow(noteId);
+            ShowStatusToast($"Created meeting note: {title}");
+        }
+
+        private static Paragraph MeetingSectionHeading(string text) =>
+            new Paragraph(new Run(text)) { FontWeight = FontWeights.Bold, FontSize = 13, Margin = new Thickness(0, 0, 0, 3) };
+
+        private static Paragraph MeetingBlankSpacer() => new Paragraph(new Run("")) { Margin = new Thickness(0) };
+
+        private static List MeetingBulletPlaceholder(string text = "") =>
+            new List(new ListItem(new Paragraph(new Run(text)))) { MarkerStyle = TextMarkerStyle.Disc, Margin = new Thickness(0, 0, 0, 0) };
+
+        private static string BuildMeetingNoteXaml(string title, DateTime meetingTime)
+        {
+            var titleParagraph = new Paragraph(new Run(title)) { FontWeight = FontWeights.Bold, FontSize = 18, Margin = new Thickness(0, 0, 0, 8) };
+
+            var document = new FlowDocument(titleParagraph)
+            {
+                // A standalone FlowDocument (not hosted inside a live RichTextBox) has no ambient
+                // white text/font to inherit, so its defaults (black, serif "Georgia") get baked into
+                // every child Run when serialized -- unreadable and off-brand on the app's dark,
+                // sans-serif note UI. Setting them explicitly here fixes both for every paragraph.
+                Foreground = Brushes.White,
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, sans-serif")
+            };
+
+            document.Blocks.Add(MeetingSectionHeading("Date/Time:"));
+            document.Blocks.Add(MeetingBulletPlaceholder(meetingTime.ToString("dddd, MMMM d, yyyy 'at' h:mm tt")));
+            document.Blocks.Add(MeetingBlankSpacer());
+
+            document.Blocks.Add(MeetingSectionHeading("Attendees:"));
+            document.Blocks.Add(MeetingBulletPlaceholder());
+            document.Blocks.Add(MeetingBlankSpacer());
+
+            document.Blocks.Add(MeetingSectionHeading("Key Discussions and Decisions:"));
+            document.Blocks.Add(MeetingBulletPlaceholder());
+            document.Blocks.Add(MeetingBlankSpacer());
+
+            document.Blocks.Add(MeetingSectionHeading("Action Items:"));
+            document.Blocks.Add(MeetingBulletPlaceholder());
+
+            var range = new TextRange(document.ContentStart, document.ContentEnd);
+            return NoteContentHelper.SaveRange(range);
+        }
+
+        private DispatcherTimer? _statusToastTimer;
+
+        private void ShowStatusToast(string message, int durationMs = 2800)
+        {
+            StatusToastText.Text = message;
+            StatusToast.Visibility = Visibility.Visible;
+
+            _statusToastTimer?.Stop();
+            _statusToastTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(durationMs) };
+            _statusToastTimer.Tick += (s, e) =>
+            {
+                StatusToast.Visibility = Visibility.Collapsed;
+                _statusToastTimer?.Stop();
+            };
+            _statusToastTimer.Start();
+        }
+
+        #endregion
+
+        #region Control Event Handlers
+
+        private void NewNoteButton_Click(object sender, RoutedEventArgs e) => CreateNewNote();
+
+        private void ScreenshotButton_Click(object sender, RoutedEventArgs e) => TakeRegionScreenshot();
+
+        private void SaveTabsButton_Click(object sender, RoutedEventArgs e) => SaveBrowserTabs();
+
+        private void AddFileButton_Click(object sender, RoutedEventArgs e) => SaveFilesToNewNote();
+
+        private void MeetingNoteButton_Click(object sender, RoutedEventArgs e) => CreateQuickMeetingNote();
+
+        private void SettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var settingsWnd = new SettingsWindow { Owner = this };
+            settingsWnd.ShowDialog();
+            LoadSavedOpacity();
+        }
+
+        private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshNotesList();
+
+        private Point _dragStartPoint;
+
+        private void NoteCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2 && sender is Border border && border.DataContext is NoteCardViewModel vm)
+            {
+                OpenNoteWindow(vm.Id);
+                e.Handled = true;
+                return;
+            }
+
+            _dragStartPoint = e.GetPosition(null);
+        }
+
+        private void NoteCard_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed && sender is Border border && border.DataContext is NoteCardViewModel vm)
+            {
+                Point currentPosition = e.GetPosition(null);
+                Vector diff = _dragStartPoint - currentPosition;
+
+                if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                {
+                    DataObject dragData = new DataObject("StickyNoteCard", vm);
+                    DragDropEffects result = DragDrop.DoDragDrop(border, dragData, DragDropEffects.Move);
+
+                    if (Win32Helper.GetCursorPos(out Win32Helper.POINT pt))
+                    {
+                        var sidebarLeft = this.Left;
+                        var sidebarRight = this.Left + this.Width;
+                        var sidebarTop = this.Top;
+                        var sidebarBottom = this.Top + this.Height;
+
+                        if (pt.X < sidebarLeft || pt.X > sidebarRight || pt.Y < sidebarTop || pt.Y > sidebarBottom)
+                        {
+                            var note = DatabaseHelper.GetNote(vm.Id);
+                            if (note != null)
+                            {
+                                note.X = pt.X - 150;
+                                note.Y = pt.Y - 160;
+                                note.W = 300;
+                                note.H = 320;
+                                DatabaseHelper.UpdateNote(note);
+                            }
+
+                            OpenNoteWindow(vm.Id);
+
+                            if (_openNoteWindows.TryGetValue(vm.Id, out var openWnd))
+                            {
+                                openWnd.Left = pt.X - 150;
+                                openWnd.Top = pt.Y - 160;
+                                openWnd.Width = 300;
+                                openWnd.Height = 320;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void DeleteCardButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int id)
+            {
+                var ans = MessageBox.Show("Are you sure you want to delete this note?", "Delete Note", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (ans == MessageBoxResult.Yes)
+                {
+                    // Clean image
+                    var note = DatabaseHelper.GetNote(id);
+                    if (note != null && !string.IsNullOrEmpty(note.ImagePath) && File.Exists(note.ImagePath))
+                    {
+                        try { File.Delete(note.ImagePath); } catch {}
+                    }
+
+                    DatabaseHelper.DeleteNote(id);
+                    
+                    // Close note window if open
+                    if (_openNoteWindows.TryGetValue(id, out NoteWindow? noteWindow))
+                    {
+                        noteWindow.Close();
+                    }
+
+                    RefreshNotesList();
+                    RefreshTagsFilter();
+                }
+            }
+        }
+
+        #endregion
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            // Close all note windows
+            var openWindows = _openNoteWindows.Values.ToList();
+            foreach (var wnd in openWindows)
+            {
+                wnd.Close();
+            }
+
+            try
+            {
+                _spotlightWnd?.Close();
+            }
+            catch {}
+
+            // Unregister AppBar
+            UnregisterAppBar();
+
+            // Unregister hotkeys
+            var wndHelper = new WindowInteropHelper(this);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9001);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9002);
+            Win32Helper.UnregisterHotKey(wndHelper.Handle, 9003);
+
+            // Stop clipboard timer
+            _clipboardTimer?.Stop();
+        }
+
+        #region Clipboard Monitoring & Actions
+
+        private void StartClipboardMonitor()
+        {
+            _clipboardTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _clipboardTimer.Tick += ClipboardTimer_Tick;
+            _clipboardTimer.Start();
+        }
+
+        private void ClipboardTimer_Tick(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (Clipboard.ContainsText())
+                {
+                    string currentText = Clipboard.GetText().Trim();
+                    if (!string.IsNullOrEmpty(currentText) && currentText != _lastClipboardText)
+                    {
+                        _lastClipboardText = currentText;
+                        _lastClipboardImage = null; // Reset image tracking to allow switching back/forth
+
+                        AddClipboardItem(new ClipboardHistoryItem
+                        {
+                            Snippet = currentText.Length > 60 ? currentText.Substring(0, 57) + "..." : currentText,
+                            FullText = currentText
+                        });
+                    }
+                }
+                else if (Clipboard.ContainsImage())
+                {
+                    var currentImage = Clipboard.GetImage();
+                    if (currentImage != null && (currentImage != _lastClipboardImage))
+                    {
+                        _lastClipboardImage = currentImage;
+                        _lastClipboardText = "";
+
+                        AddClipboardItem(new ClipboardHistoryItem
+                        {
+                            Snippet = "Clipboard Image",
+                            ImageSource = currentImage
+                        });
+                    }
+                }
+            }
+            catch
+            {
+                // Clipboard access can throw if occupied by another process, ignore and retry next second
+            }
+        }
+
+        private void AddClipboardItem(ClipboardHistoryItem item)
+        {
+            _clipboardHistory.Insert(0, item);
+            if (_clipboardHistory.Count > 15)
+            {
+                _clipboardHistory.RemoveAt(_clipboardHistory.Count - 1);
+            }
+
+            ClipboardItemsControl.ItemsSource = null;
+            ClipboardItemsControl.ItemsSource = _clipboardHistory;
+        }
+
+        private void NotesTabButton_Click(object sender, RoutedEventArgs e)
+        {
+            this.Width = 320;
+
+            NotesTabButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
+            NotesTabButton.Foreground = Brushes.White;
+            NotesTabButton.FontWeight = FontWeights.SemiBold;
+
+            ClipboardTabButton.Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
+            ClipboardTabButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+            ClipboardTabButton.FontWeight = FontWeights.Normal;
+
+            SearchPanel.Visibility = Visibility.Visible;
+            TagsFilterScrollViewer.Visibility = Visibility.Visible;
+            SortPanel.Visibility = Visibility.Visible;
+            NotesScrollViewer.Visibility = Visibility.Visible;
+            ClipboardScrollViewer.Visibility = Visibility.Collapsed;
+        }
+
+        private void ClipboardTabButton_Click(object sender, RoutedEventArgs e)
+        {
+            this.Width = 320;
+
+            ClipboardTabButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
+            ClipboardTabButton.Foreground = Brushes.White;
+            ClipboardTabButton.FontWeight = FontWeights.SemiBold;
+
+            NotesTabButton.Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
+            NotesTabButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+            NotesTabButton.FontWeight = FontWeights.Normal;
+
+            SearchPanel.Visibility = Visibility.Collapsed;
+            TagsFilterScrollViewer.Visibility = Visibility.Collapsed;
+            SortPanel.Visibility = Visibility.Collapsed;
+            NotesScrollViewer.Visibility = Visibility.Collapsed;
+            ClipboardScrollViewer.Visibility = Visibility.Visible;
+
+            ClipboardItemsControl.ItemsSource = null;
+            ClipboardItemsControl.ItemsSource = _clipboardHistory;
+        }
+
+        private void SortCategoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            _sortOrder = "category";
+            SortCategoryButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
+            SortCategoryButton.Foreground = Brushes.White;
+            
+            SortDateButton.Background = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255));
+            SortDateButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+
+            RefreshNotesList();
+        }
+
+        private void SortDateButton_Click(object sender, RoutedEventArgs e)
+        {
+            _sortOrder = "date";
+            SortDateButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
+            SortDateButton.Foreground = Brushes.White;
+            
+            SortCategoryButton.Background = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255));
+            SortCategoryButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+
+            RefreshNotesList();
+        }
+
+        private async void CreateNoteFromClipboard_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string id)
+            {
+                btn.IsEnabled = false;
+                var item = _clipboardHistory.FirstOrDefault(i => i.Id == id);
+                if (item != null)
+                {
+                    int noteId;
+                    if (item.ImageSource != null)
+                    {
+                        string filename = $"clipboard_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 6)}.png";
+                        string filepath = System.IO.Path.Combine(AppConfig.ImagesDir, filename);
+
+                        using (var fileStream = new FileStream(filepath, FileMode.Create))
+                        {
+                            BitmapEncoder encoder = new PngBitmapEncoder();
+                            encoder.Frames.Add(BitmapFrame.Create(item.ImageSource));
+                            encoder.Save(fileStream);
+                        }
+
+                        var ocrResult = await OcrHelper.PerformOcrAsync(filepath);
+                        noteId = DatabaseHelper.CreateNote("Clipboard Image", "", filepath, ocrResult.Text, "yellow");
+
+                        var tags = new HashSet<string>(ocrResult.Tags);
+                        if (await AiHelper.IsOllamaRunningAsync())
+                        {
+                            var aiTags = await AiHelper.AutoTagTextAsync(ocrResult.Text);
+                            foreach (var tag in aiTags)
+                            {
+                                tags.Add(tag.Trim().ToLower());
+                            }
+                        }
+
+                        foreach (var tag in tags)
+                        {
+                            DatabaseHelper.AddTagToNote(noteId, tag);
+                        }
+                    }
+                    else
+                    {
+                        noteId = DatabaseHelper.CreateNote("Clipboard Text", item.FullText ?? "", null, null, "yellow");
+
+                        var tags = new HashSet<string>();
+                        if (item.FullText != null)
+                        {
+                            if (item.FullText.Contains("http://") || item.FullText.Contains("https://")) tags.Add("link");
+                            if (item.FullText.Contains("@")) tags.Add("contact");
+
+                            if (await AiHelper.IsOllamaRunningAsync())
+                            {
+                                var aiTags = await AiHelper.AutoTagTextAsync(item.FullText);
+                                foreach (var tag in aiTags)
+                                {
+                                    tags.Add(tag.Trim().ToLower());
+                                }
+                            }
+                        }
+
+                        foreach (var tag in tags)
+                        {
+                            DatabaseHelper.AddTagToNote(noteId, tag);
+                        }
+                    }
+
+                    RefreshNotesList();
+                    RefreshTagsFilter();
+                    NotesTabButton_Click(this, new RoutedEventArgs());
+                }
+            }
+        }
+
+        #endregion
+
+        #region Sidebar Context Menu Handlers
+
+        private void ColorPaletteFromCard_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is int noteId)
+            {
+                var menu = new ContextMenu();
+                
+                var colors = new[] { ("Yellow", "yellow"), ("Green", "green"), ("Pink", "pink"), ("Purple", "purple"), ("Blue", "blue"), ("Charcoal", "charcoal") };
+                foreach (var (name, key) in colors)
+                {
+                    var item = new MenuItem { Header = name, Tag = noteId, CommandParameter = key };
+                    item.Click += ChangeColorFromCard_Click;
+                    menu.Items.Add(item);
+                }
+
+                menu.PlacementTarget = btn;
+                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                menu.IsOpen = true;
+            }
+        }
+
+
+
+        private void OpenNoteFromCard_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem item && item.Tag is int noteId)
+            {
+                OpenNoteWindow(noteId);
+            }
+        }
+
+        private void DeleteNoteFromCard_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem item && item.Tag is int noteId)
+            {
+                var res = MessageBox.Show("Are you sure you want to delete this note?", "Delete Note", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (res == MessageBoxResult.Yes)
+                {
+                    if (_openNoteWindows.TryGetValue(noteId, out var openWnd))
+                    {
+                        openWnd.Close();
+                    }
+
+                    var note = DatabaseHelper.GetNote(noteId);
+                    if (note != null && !string.IsNullOrEmpty(note.ImagePath) && File.Exists(note.ImagePath))
+                    {
+                        try { File.Delete(note.ImagePath); } catch {}
+                    }
+
+                    DatabaseHelper.DeleteNote(noteId);
+                    RefreshNotesList();
+                    RefreshTagsFilter();
+                }
+            }
+        }
+
+
+        private void ChangeColorFromCard_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem item && item.Tag is int noteId && item.CommandParameter is string colorKey)
+            {
+                var note = DatabaseHelper.GetNote(noteId);
+                if (note != null)
+                {
+                    note.Color = colorKey;
+                    DatabaseHelper.UpdateNote(note);
+                    
+                    if (_openNoteWindows.TryGetValue(noteId, out var openWnd))
+                    {
+                        openWnd.ChangeColor(colorKey);
+                    }
+
+                    RefreshNotesList();
+                }
+            }
+        }
+
+        private void CategoryFromCard_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button btn) || !(btn.Tag is int noteId)) return;
+
+            var note = DatabaseHelper.GetNote(noteId);
+            if (note == null) return;
+
+            string currentCategory = note.Category ?? "General";
+
+            var menu = new ContextMenu();
+
+            // List all distinct categories from the database
+            var existingCategories = DatabaseHelper.ListNotes(null, null)
+                .Select(n => n.Category ?? "General")
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+
+            foreach (var cat in existingCategories)
+            {
+                var menuItem = new MenuItem
+                {
+                    Header = cat,
+                    IsCheckable = true,
+                    IsChecked = cat == currentCategory
+                };
+                string catCopy = cat;
+                menuItem.Click += (s, args) =>
+                {
+                    var n = DatabaseHelper.GetNote(noteId);
+                    if (n != null)
+                    {
+                        n.Category = catCopy;
+                        DatabaseHelper.UpdateNote(n);
+                        if (_openNoteWindows.TryGetValue(noteId, out var wnd))
+                            wnd.UpdateCategory(catCopy);
+                        RefreshNotesList();
+                    }
+                };
+                menu.Items.Add(menuItem);
+            }
+
+            menu.Items.Add(new Separator());
+
+            // New Category option
+            var newCatItem = new MenuItem { Header = "+ New Category..." };
+            newCatItem.Click += (s, args) =>
+            {
+                var dialog = new InputDialog("Enter a new category name:", "New Category", currentCategory)
+                {
+                    Owner = this
+                };
+                if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.Answer))
+                {
+                    var n = DatabaseHelper.GetNote(noteId);
+                    if (n != null)
+                    {
+                        n.Category = dialog.Answer.Trim();
+                        DatabaseHelper.UpdateNote(n);
+                        if (_openNoteWindows.TryGetValue(noteId, out var wnd))
+                            wnd.UpdateCategory(n.Category);
+                        RefreshNotesList();
+                    }
+                }
+            };
+            menu.Items.Add(newCatItem);
+
+            menu.PlacementTarget = btn;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+
+        #endregion
+    }
+
+    // View Model for Clipboard Items
+    public class ClipboardHistoryItem
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        public string Snippet { get; set; } = "";
+        public string? FullText { get; set; }
+        public BitmapSource? ImageSource { get; set; }
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+
+        public Visibility TextVisibility => !string.IsNullOrEmpty(FullText) ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility ImageVisibility => ImageSource != null ? Visibility.Visible : Visibility.Collapsed;
+
+        public string TimeDisplay => $"{Timestamp:HH:mm:ss} ({GetTimeAgo()})";
+
+        private string GetTimeAgo()
+        {
+            var span = DateTime.Now - Timestamp;
+            if (span.TotalSeconds < 60) return "just now";
+            if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+            return $"{(int)span.TotalHours}h ago";
+        }
+    }
+
+    // View Model for Card Items
+    public class QuickOpenItem
+    {
+        public string Label { get; set; } = "";
+        public string Target { get; set; } = "";
+        public bool IsFile { get; set; }
+    }
+
+    public class NoteCardViewModel
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Color { get; set; } = "yellow";
+        public string Snippet { get; set; } = "";
+        public string? ImagePath { get; set; }
+        public List<string> Tags { get; set; } = new List<string>();
+        public string Category { get; set; } = "General";
+        public List<QuickOpenItem> QuickOpenItems { get; set; } = new List<QuickOpenItem>();
+
+        public string DisplayTitle => string.IsNullOrEmpty(Title) ? "Sticky Note" : Title;
+
+        public Visibility QuickOpenVisibility => QuickOpenItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // U+FE0F (variation selector-16) forces color-emoji presentation; without it WPF's
+        // font-linking sometimes falls back to a font with no glyph for these two codepoints
+        // and renders a tofu box instead of the icon.
+        public string QuickOpenIcon => (QuickOpenItems.Any(i => i.IsFile) ? "📎" : "🔗") + "️";
+
+        public string QuickOpenToolTip => QuickOpenItems.Count == 1
+            ? $"Open {QuickOpenItems[0].Label}"
+            : $"Open ({QuickOpenItems.Count} links/files)";
+
+        public string TagsList => Tags.Count > 0 ? string.Join("  ", Tags.Select(t => $"#{t}")) : "";
+
+        public Visibility ImageVisibility => (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath)) ? Visibility.Visible : Visibility.Collapsed;
+
+        // --- Task Checklist Properties ---
+        public int TotalTasks => CountOccurrences(Snippet, "- [ ]") + CountOccurrences(Snippet, "- [x]") + CountOccurrences(Snippet, "* [ ]") + CountOccurrences(Snippet, "* [x]");
+        public int CompletedTasks => CountOccurrences(Snippet, "- [x]") + CountOccurrences(Snippet, "* [x]");
+
+        public double TaskProgressPercentage => TotalTasks > 0 ? ((double)CompletedTasks / TotalTasks) * 100 : 0;
+        public string TaskStatsText => $"{CompletedTasks} of {TotalTasks} tasks";
+        public Visibility TaskProgressVisibility => TotalTasks > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        private int CountOccurrences(string text, string pattern)
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(pattern)) return 0;
+            int count = 0;
+            int index = 0;
+            while ((index = text.IndexOf(pattern, index, StringComparison.OrdinalIgnoreCase)) != -1)
+            {
+                count++;
+                index += pattern.Length;
+            }
+            return count;
+        }
+
+        public BitmapImage? ThumbnailSource
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(ImagePath) || !File.Exists(ImagePath)) return null;
+                try
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.DecodePixelWidth = 100; // Small decode height to save memory
+                    bitmap.UriSource = new Uri(ImagePath);
+                    bitmap.EndInit();
+                    return bitmap;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
+
+        // Custom mapping colors for view cards
+        private static readonly Dictionary<string, (string bg, string border, string text)> ColorsConfig = 
+            new Dictionary<string, (string bg, string border, string text)>
+        {
+            { "yellow", ("#CC221C12", "#D49A13", "#ffffff") },
+            { "green", ("#CC122018", "#1A8F54", "#ffffff") },
+            { "pink", ("#CC221218", "#C2185B", "#ffffff") },
+            { "purple", ("#CC1B1220", "#7B1FA2", "#ffffff") },
+            { "blue", ("#CC121C22", "#0288D1", "#ffffff") },
+            { "charcoal", ("#CC1B1B1B", "#424242", "#ffffff") }
+        };
+
+        public System.Windows.Media.Brush CardBackground
+        {
+            get
+            {
+                string key = Color;
+                if (!ColorsConfig.ContainsKey(key)) key = "yellow";
+                return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(ColorsConfig[key].bg)!;
+            }
+        }
+
+        public System.Windows.Media.Brush CardHeaderBrush
+        {
+            get
+            {
+                string key = Color;
+                if (!ColorsConfig.ContainsKey(key)) key = "yellow";
+                return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(ColorsConfig[key].border)!;
+            }
+        }
+
+        public System.Windows.Media.Brush CardTextBrush
+        {
+            get
+            {
+                string key = Color;
+                if (!ColorsConfig.ContainsKey(key)) key = "yellow";
+                return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(ColorsConfig[key].text)!;
+            }
+        }
+    }
+
+    public class NoteOrganizationResult
+    {
+        public string category { get; set; } = "General";
+        public List<string> tags { get; set; } = new List<string>();
+    }
+}

@@ -1,0 +1,445 @@
+<Window x:Class="StickyNotes__.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="StickyNotes++" Height="800" Width="350"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize"
+        SourceInitialized="Window_SourceInitialized"
+        Closing="Window_Closing"
+        Loaded="Window_Loaded">
+    
+    <Window.Resources>
+        <DataTemplate x:Key="NoteCardTemplate">
+            <!-- Note Card -->
+            <Border x:Name="CardBorder" Margin="0,0,0,14" CornerRadius="8" BorderThickness="1" Cursor="Hand"
+                    Background="{Binding CardBackground}"
+                    PreviewMouseLeftButtonDown="NoteCard_PreviewMouseLeftButtonDown"
+                    MouseMove="NoteCard_MouseMove">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="BorderBrush" Value="{Binding CardHeaderBrush}"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="BorderBrush" Value="#0084ff"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Row 0: Title & Hover -->
+                        <RowDefinition Height="Auto"/> <!-- Row 1: Snippet -->
+                        <RowDefinition Height="Auto"/> <!-- Row 2: Task Progress Bar -->
+                        <RowDefinition Height="Auto"/> <!-- Row 3: Image -->
+                        <RowDefinition Height="Auto"/> <!-- Row 4: Tags -->
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Note Title -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DisplayTitle}"
+                               Foreground="{Binding CardTextBrush}" FontSize="13" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+
+                    <!-- Quick Open (URL / Attachment) — always visible when applicable -->
+                    <Button Grid.Row="0" Grid.Column="1" Click="QuickOpenButton_Click" ToolTip="{Binding QuickOpenToolTip}"
+                            Visibility="{Binding QuickOpenVisibility}"
+                            Background="#26FFFFFF" BorderThickness="0" Foreground="#ffffff"
+                            Width="22" Height="22" FontSize="11" Cursor="Hand" Margin="0,0,6,0" VerticalAlignment="Center">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="11"/>
+                            </Style>
+                        </Button.Resources>
+                        <TextBlock Text="{Binding QuickOpenIcon}" FontSize="12" FontFamily="Segoe UI Emoji" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- Hover Action Icons Panel -->
+                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        
+                        <!-- Color palette menu trigger -->
+                        <Button Content="🎨" Click="ColorPaletteFromCard_Click" Tag="{Binding Id}" ToolTip="Change Color"
+                                Background="Transparent" BorderThickness="0" Foreground="#e0e0e0" 
+                                Width="20" Height="20" FontSize="10" Cursor="Hand" Margin="0,0,3,0" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                        <!-- Move to Category -->
+                        <Button Content="📁" Click="CategoryFromCard_Click" Tag="{Binding Id}" ToolTip="Move to Category"
+                                Background="Transparent" BorderThickness="0" Foreground="#e0e0e0" 
+                                Width="20" Height="20" FontSize="10" Cursor="Hand" Margin="0,0,3,0" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                        <!-- Delete note -->
+                        <Button Content="✕" Click="DeleteCardButton_Click" Tag="{Binding Id}" ToolTip="Delete Note"
+                                Background="Transparent" BorderThickness="0" Foreground="#ff5252" 
+                                Width="20" Height="20" FontSize="10" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                    </StackPanel>
+
+                    <!-- Text Snippet -->
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Snippet}" 
+                               Foreground="{Binding CardTextBrush}" FontSize="12" Margin="0,6,0,0" 
+                               TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Opacity="0.8" MaxHeight="60"/>
+
+                    <!-- Task Progress Bar -->
+                    <Grid Grid.Row="2" Grid.ColumnSpan="3" Margin="0,8,0,0" Visibility="{Binding TaskProgressVisibility}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="{Binding TaskStatsText}" Foreground="{Binding CardTextBrush}" FontSize="10.5" Opacity="0.75" Margin="0,0,0,4"/>
+                        <ProgressBar Grid.Row="1" Height="4" Value="{Binding TaskProgressPercentage, Mode=OneWay}" Maximum="100" BorderThickness="0" Background="#33FFFFFF" Foreground="#0084ff"/>
+                    </Grid>
+
+                    <!-- Thumbnail Image (if exists) -->
+                    <Border Grid.Row="3" Grid.ColumnSpan="3" MaxHeight="60" CornerRadius="4" ClipToBounds="True" 
+                            Margin="0,8,0,0" HorizontalAlignment="Left" Visibility="{Binding ImageVisibility}">
+                        <Image Source="{Binding ThumbnailSource}" Stretch="Uniform"/>
+                    </Border>
+
+                    <!-- Note Tags -->
+                    <TextBlock Grid.Row="4" Grid.ColumnSpan="3" Text="{Binding TagsList}" 
+                               Foreground="{Binding CardTextBrush}" FontSize="9" Margin="0,8,0,0" Opacity="0.6"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Border x:Name="MainWindowBorder" Background="#E6121212" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="12">
+        <!-- Root Grid: content + status toast overlay -->
+        <Grid>
+            <Grid Margin="15">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Row 0: Logo &amp; Action Icons -->
+                <RowDefinition Height="Auto"/> <!-- Row 1: Action Bar -->
+                <RowDefinition Height="Auto"/> <!-- Row 2: Tab Navigation -->
+                <RowDefinition Height="Auto"/> <!-- Row 3: Search Bar -->
+                <RowDefinition Height="Auto"/> <!-- Row 4: Tags Filter Bar -->
+                <RowDefinition Height="Auto"/> <!-- Row 5: Sort Options Row -->
+                <RowDefinition Height="*"/>    <!-- Row 6: Notes List / Clipboard ScrollViewer -->
+            </Grid.RowDefinitions>
+
+                <!-- Title &amp; Settings Header (Row 0) -->
+                <Grid Grid.Row="0" Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Logo &amp; Title -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="app_icon.png" Width="22" Height="22" Margin="0,0,8,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text="StickyNotes++" Foreground="#ffffff" FontSize="16.5" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- Action Button Controls Stack -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Settings Button -->
+                        <Button Content="⚙" Click="SettingsButton_Click" ToolTip="Settings"
+                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="13" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                        <!-- Minimize Sidebar -->
+                        <Button Content="—" Click="MinimizeButton_Click" ToolTip="Minimize to Tray"
+                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                        <!-- Close Sidebar -->
+                        <Button Content="✕" Click="CloseButton_Click" ToolTip="Exit"
+                                Width="26" Height="26" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Prominent Action Bar (Row 1) -->
+                <Grid Grid.Row="1" Margin="0,0,0,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="8"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- New Note Button (primary CTA) -->
+                    <Button Grid.Row="0" Click="NewNoteButton_Click" ToolTip="New Note (Win+Alt+N)" Height="38" Cursor="Hand" BorderThickness="0">
+                        <Button.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#0066cc" Offset="0"/>
+                                <GradientStop Color="#0099ff" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Button.Background>
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="8"/>
+                            </Style>
+                        </Button.Resources>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="✚" FontSize="15" Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="New Note" FontSize="12" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Secondary Actions Row -->
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Screensnip Button -->
+                        <Button Grid.Column="0" Click="ScreenshotButton_Click" ToolTip="Screensnip OCR (Win+Alt+S)" Height="32" Cursor="Hand" BorderThickness="1">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#1a1a2e" Offset="0"/>
+                                    <GradientStop Color="#2d2d44" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="BorderBrush" Value="#444466"/>
+                                </Style>
+                            </Button.Style>
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="7"/>
+                                </Style>
+                            </Button.Resources>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="📸" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Snip" FontSize="11" FontWeight="SemiBold" Foreground="#cccccc" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Save Browser Tabs Button -->
+                        <Button Grid.Column="2" Click="SaveTabsButton_Click" ToolTip="Save open Chrome/Edge tabs (Win+Alt+T)" Height="32" Cursor="Hand" BorderThickness="0">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#0d7a5f" Offset="0"/>
+                                    <GradientStop Color="#12a37f" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="7"/>
+                                </Style>
+                            </Button.Resources>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="🔗" FontSize="11" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Tabs" FontSize="11" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Add File Button -->
+                        <Button Grid.Column="4" Click="AddFileButton_Click" ToolTip="Save files/documents to a new note (Win+Alt+F)" Height="32" Cursor="Hand" BorderThickness="0">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#7a4d0d" Offset="0"/>
+                                    <GradientStop Color="#a3720f" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="7"/>
+                                </Style>
+                            </Button.Resources>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="📎" FontSize="11" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="File" FontSize="11" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Quick Meeting Note Button -->
+                        <Button Grid.Column="6" Click="MeetingNoteButton_Click" ToolTip="Quick meeting note (Win+Alt+M)" Height="32" Cursor="Hand" BorderThickness="0">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#5b2d8f" Offset="0"/>
+                                    <GradientStop Color="#7c3fc4" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="7"/>
+                                </Style>
+                            </Button.Resources>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="📅" FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="Meet" FontSize="11" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Grid>
+
+                <!-- Sidebar Tab Navigation Row (Row 2) -->
+                <Grid Grid.Row="2" Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- My Notes Tab Button -->
+                    <Button x:Name="NotesTabButton" Grid.Column="0" Content="My Notes" Click="NotesTabButton_Click" Margin="0,0,3,0" Height="28"
+                            Background="#0084ff" Foreground="#ffffff" FontWeight="SemiBold" FontSize="11" BorderThickness="0" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+
+                    <!-- Clipboard History Tab Button -->
+                    <Button x:Name="ClipboardTabButton" Grid.Column="1" Content="Clipboard" Click="ClipboardTabButton_Click" Margin="3,0,0,0" Height="28"
+                            Background="#1e1e1e" Foreground="#888888" FontWeight="Normal" FontSize="11" BorderThickness="0" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                </Grid>
+
+                <!-- Search Panel Grid (Row 2) -->
+                <Grid x:Name="SearchPanel" Grid.Row="3" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <TextBox x:Name="SearchTextBox" Grid.Column="0" TextChanged="SearchTextBox_TextChanged" Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="0" CaretBrush="White">
+                        <TextBox.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </TextBox.Resources>
+                    </TextBox>
+                    <TextBlock Grid.Column="0" IsHitTestVisible="False" Text="Search notes..." VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="12">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchTextBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- AI Auto Organize Button -->
+                    <Button Grid.Column="1" x:Name="AutoOrganizeButton" Content="🪄 Auto Organize" Click="AutoOrganizeButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="11" BorderThickness="0" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                </Grid>
+
+                <!-- Tags Filter Bar (Row 3) -->
+                <ScrollViewer x:Name="TagsFilterScrollViewer" Grid.Row="4" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,15">
+                    <StackPanel x:Name="TagsFilterPanel" Orientation="Horizontal"/>
+                </ScrollViewer>
+
+                <!-- Sort Options Row (Row 4 - Hidden when Clipboard active) -->
+                <Grid x:Name="SortPanel" Grid.Row="5" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Sort by:" Foreground="#88ffffff" FontSize="10.5" VerticalAlignment="Center"/>
+
+                    <!-- Sort by Category Button -->
+                    <Button Grid.Column="2" x:Name="SortCategoryButton" Content="Category" Click="SortCategoryButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+
+                    <!-- Sort by Date Button -->
+                    <Button Grid.Column="3" x:Name="SortDateButton" Content="Date (Newest)" Click="SortDateButton_Click" Margin="4,0,0,0" Padding="8,2" Background="#0084ff" Foreground="#ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                </Grid>
+
+                <!-- Notes List (Row 6) -->
+                <ScrollViewer x:Name="NotesScrollViewer" Grid.Row="6" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="NotesGroupPanel"/>
+                </ScrollViewer>
+
+                <!-- Clipboard List (Row 6 - Collapsed by default) -->
+                <ScrollViewer x:Name="ClipboardScrollViewer" Grid.Row="6" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
+                    <ItemsControl x:Name="ClipboardItemsControl">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <!-- Clipboard Item Card -->
+                                <Border Margin="0,0,0,12" CornerRadius="8" BorderThickness="1" BorderBrush="#333333" Background="#161616" Padding="10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Preview Content -->
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <!-- Text snippet -->
+                                            <TextBlock Text="{Binding Snippet}" Foreground="#ffffff" FontSize="12.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Visibility="{Binding TextVisibility}"/>
+                                            <!-- Image preview -->
+                                            <Image Source="{Binding ImageSource}" MaxHeight="80" Stretch="Uniform" HorizontalAlignment="Left" Visibility="{Binding ImageVisibility}"/>
+                                            <!-- Timestamp info -->
+                                            <TextBlock Text="{Binding TimeDisplay}" Foreground="#555555" FontSize="10" Margin="0,4,0,0"/>
+                                        </StackPanel>
+
+                                        <!-- Convert Button -->
+                                        <Button Grid.Column="1" Click="CreateNoteFromClipboard_Click" Tag="{Binding Id}"
+                                                Width="32" Height="32" Background="#0084ff" Foreground="#ffffff" FontSize="14" FontWeight="Bold" Cursor="Hand" VerticalAlignment="Center" Margin="10,0,0,0" ToolTip="Convert to Note">
+                                            <TextBlock Text="+" Margin="0,-2,0,0"/>
+                                            <Button.Resources>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="CornerRadius" Value="16"/>
+                                                </Style>
+                                            </Button.Resources>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- Status Toast Overlay (shown during OCR / AI processing) -->
+            <Border x:Name="StatusToast" Visibility="Collapsed"
+                    Background="#DD0a0a0a" BorderBrush="#0084ff" BorderThickness="1"
+                    CornerRadius="8" Padding="14,10" Margin="12"
+                    VerticalAlignment="Bottom" HorizontalAlignment="Stretch">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="StatusToastText" Text="Processing..." 
+                               Foreground="#ffffff" FontSize="12" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
