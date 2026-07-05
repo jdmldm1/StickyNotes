@@ -101,10 +101,11 @@
                         <RowDefinition Height="Auto"/> <!-- Header: title + actions -->
                         <RowDefinition Height="Auto"/> <!-- Toolbar -->
                         <RowDefinition Height="*"/>    <!-- Editor -->
+                        <RowDefinition Height="Auto"/> <!-- AI Chat Panel (collapsed by default) -->
                         <RowDefinition Height="Auto"/> <!-- Footer -->
                     </Grid.RowDefinitions>
 
-                    <TextBlock x:Name="EmptyStateText" Grid.Row="0" Grid.RowSpan="4" Text="Select a note on the left to view or edit it here."
+                    <TextBlock x:Name="EmptyStateText" Grid.Row="0" Grid.RowSpan="5" Text="Select a note on the left to view or edit it here."
                                Foreground="#55ffffff" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
                     <!-- Header -->
@@ -113,12 +114,31 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="EditorTitleText" Grid.Column="0" Text="Sticky Note" FontSize="18" FontWeight="Bold"
-                                   Foreground="#ffffff" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <TextBox x:Name="EditorTitleBox" Grid.Column="0" Text="" FontSize="18" FontWeight="Bold"
+                                 Foreground="#ffffff" Background="Transparent" BorderThickness="0" CaretBrush="White"
+                                 VerticalAlignment="Center" Padding="0" TextChanged="EditorTitleBox_TextChanged"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="EditorFavoriteButton" Click="EditorFavoriteButton_Click" ToolTip="Mark as favorite"
-                                    Background="Transparent" BorderThickness="0" Foreground="#ffc107" FontSize="16"
-                                    Width="28" Height="28" Cursor="Hand" Content="☆"/>
+                                    Background="Transparent" BorderThickness="0" Foreground="#ffc107" FontSize="16" Padding="0"
+                                    Width="28" Height="28" Cursor="Hand" Content="☆" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                            <Button Content="🔷" Click="AiFormatButton_Click" ToolTip="AI Quick Format"
+                                    Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" FontSize="12" Padding="0"
+                                    Width="28" Height="28" Margin="6,0,0,0" Cursor="Hand" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="6"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                            <Button x:Name="AiChatToggleButton" Content="💬" Click="AiChatToggleButton_Click" ToolTip="AI Chat about this note"
+                                    Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" FontSize="12" Padding="0"
+                                    Width="28" Height="28" Margin="6,0,0,0" Cursor="Hand" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="6"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
                             <Button Content="↗ Open" Click="OpenInNoteWindowButton_Click" ToolTip="Open in a full note window"
                                     Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" FontSize="11"
                                     Padding="8,4" Margin="8,0,0,0" Cursor="Hand">
@@ -236,8 +256,37 @@
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
 
+                    <!-- AI Chat Panel (collapsed by default) -->
+                    <Border x:Name="AiChatPanel" Grid.Row="3" Height="180" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="1" CornerRadius="6" Margin="0,8,0,0" Visibility="Collapsed">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <ScrollViewer x:Name="ChatScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="10">
+                                <StackPanel x:Name="ChatHistoryPanel"/>
+                            </ScrollViewer>
+
+                            <Grid Grid.Row="1" Margin="8,4,8,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="AiPromptTextBox" Grid.Column="0" Background="#262626" Foreground="#ffffff" BorderBrush="#333333" BorderThickness="1" Padding="8,4" FontSize="12" CaretBrush="White" KeyDown="AiPromptTextBox_KeyDown"/>
+                                <Button Grid.Column="1" Content="Send" Click="SendAiPrompt_Click" Padding="12,4" Margin="5,0,0,0" Background="#0084ff" Foreground="#ffffff" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="4"/>
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
                     <!-- Footer -->
-                    <Grid x:Name="EditorFooterGrid" Grid.Row="3" Margin="0,8,0,0" Visibility="Collapsed">
+                    <Grid x:Name="EditorFooterGrid" Grid.Row="4" Margin="0,8,0,0" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
@@ -245,8 +294,36 @@
                         </Grid.ColumnDefinitions>
                         <ComboBox x:Name="EditorCategoryCombo" Grid.Column="0" SelectionChanged="EditorCategoryCombo_SelectionChanged"
                                   MinWidth="110" Padding="6,3" FontSize="10.5" Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" Cursor="Hand"/>
-                        <TextBlock x:Name="EditorTagsText" Grid.Column="1" Text="No tags" Foreground="#88ffffff" FontSize="10.5"
-                                   VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis"/>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                            <ItemsControl x:Name="EditorTagsItemsControl">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#22ffffff" CornerRadius="8" Padding="7,2" Margin="0,0,4,4">
+                                            <TextBlock FontSize="9.5" Foreground="#dddddd">
+                                                <Run Text="#"/><Run Text="{Binding Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Button x:Name="EditorAddTagButton" Content="+" Click="EditorAddTagButton_Click" ToolTip="Quick add tag"
+                                    Width="18" Height="18" Padding="0" FontSize="10" Margin="0,0,4,4"
+                                    Background="#22ffffff" Foreground="#bbbbbb" BorderThickness="0" Cursor="Hand">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="9"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                        </StackPanel>
+
                         <TextBlock x:Name="ManagerWordCountText" Grid.Column="2" Text="" Foreground="#55ffffff" FontSize="10" VerticalAlignment="Center"/>
                     </Grid>
                 </Grid>

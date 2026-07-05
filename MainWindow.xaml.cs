@@ -1350,13 +1350,43 @@ namespace StickyNotes__
         {
             if (sender is not Button btn || btn.Tag is not int id) return;
 
-            string tag = InputBox.Show("Add Tag", "Enter tag name:");
-            if (!string.IsNullOrEmpty(tag))
+            var existingNoteTags = new HashSet<string>(DatabaseHelper.GetNoteTags(id), StringComparer.OrdinalIgnoreCase);
+            var availableTags = DatabaseHelper.ListAllTags().Where(t => !existingNoteTags.Contains(t)).ToList();
+
+            var menu = new ContextMenu();
+
+            if (availableTags.Count > 0)
             {
-                DatabaseHelper.AddTagToNote(id, tag);
-                RefreshNotesList();
-                RefreshTagsFilter();
+                foreach (var tag in availableTags)
+                {
+                    var item = new MenuItem { Header = $"#{tag}" };
+                    string tagCopy = tag;
+                    item.Click += (s, args) =>
+                    {
+                        DatabaseHelper.AddTagToNote(id, tagCopy);
+                        RefreshNotesList();
+                        RefreshTagsFilter();
+                    };
+                    menu.Items.Add(item);
+                }
+                menu.Items.Add(new Separator());
             }
+
+            var newTagItem = new MenuItem { Header = "+ New Tag..." };
+            newTagItem.Click += (s, args) =>
+            {
+                string tag = InputBox.Show("Add Tag", "Enter tag name:");
+                if (!string.IsNullOrEmpty(tag))
+                {
+                    DatabaseHelper.AddTagToNote(id, tag);
+                    RefreshNotesList();
+                    RefreshTagsFilter();
+                }
+            };
+            menu.Items.Add(newTagItem);
+
+            menu.PlacementTarget = btn;
+            menu.IsOpen = true;
         }
 
         private void FavoriteButton_Click(object sender, RoutedEventArgs e)

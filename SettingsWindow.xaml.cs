@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -29,6 +30,7 @@ namespace StickyNotes__
         {
             InitializeComponent();
             LoadSettings();
+            DataLocationPathText.Text = AppConfig.AppDir;
         }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
@@ -243,6 +245,84 @@ namespace StickyNotes__
             finally
             {
                 RestoreBackupButton.IsEnabled = true;
+            }
+        }
+
+        private void ChangeDataLocationButton_Click(object sender, RoutedEventArgs e)
+        {
+            using var dialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Choose a folder where StickyNotes++ will store its data",
+                UseDescriptionForTitle = true
+            };
+
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+            string newDataDir = Path.Combine(dialog.SelectedPath, "StickyNotesPlus");
+
+            var confirm = MessageBox.Show(
+                $"Move your notes, images, and attachments to:\n{newDataDir}\n\nThe app will restart afterward. Continue?",
+                "Change Data Location", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            try
+            {
+                ChangeDataLocationButton.IsEnabled = false;
+                DataLocationStatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.LightGray);
+                DataLocationStatusTextBlock.Text = "Moving data...";
+
+                AppConfig.RelocateDataDirectory(newDataDir);
+
+                DataLocationStatusTextBlock.Foreground = System.Windows.Media.Brushes.LightGreen;
+                DataLocationStatusTextBlock.Text = "Data moved. Restarting...";
+
+                string exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
+                if (!string.IsNullOrEmpty(exePath))
+                {
+                    Process.Start(exePath);
+                }
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                DataLocationStatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
+                DataLocationStatusTextBlock.Text = "Failed to move data: " + ex.Message;
+                ChangeDataLocationButton.IsEnabled = true;
+            }
+        }
+
+        private void ClearAllNotesButton_Click(object sender, RoutedEventArgs e)
+        {
+            var confirm = MessageBox.Show(
+                "This will permanently delete ALL notes, images, and attachments. This cannot be undone.\n\nAre you sure you want to continue?",
+                "Clear All Notes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            var finalConfirm = MessageBox.Show(
+                "Last chance -- this really cannot be undone. Delete everything?",
+                "Clear All Notes", MessageBoxButton.YesNo, MessageBoxImage.Stop);
+            if (finalConfirm != MessageBoxResult.Yes) return;
+
+            try
+            {
+                DatabaseHelper.ClearAllNotes();
+
+                if (Owner is MainWindow mainWin)
+                {
+                    mainWin.RefreshNotesList();
+                    mainWin.RefreshTagsFilter();
+                }
+                else if (Application.Current.MainWindow is MainWindow main)
+                {
+                    main.RefreshNotesList();
+                    main.RefreshTagsFilter();
+                }
+
+                MessageBox.Show("All notes have been cleared.", "Clear All Notes", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to clear notes: " + ex.Message, "Clear All Notes", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

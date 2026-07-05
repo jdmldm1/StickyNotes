@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Documents;
@@ -11,7 +12,14 @@ namespace StickyNotes__
     public static class AppConfig
     {
         public static readonly string AppName = "StickyNotesPlus";
-        public static readonly string AppDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName);
+
+        // This default folder never moves -- it's where a small pointer file lives that records
+        // where the *real* data folder is, so a relocated data dir (e.g. onto a second drive) can
+        // still be found on the next launch without touching the registry or an install path.
+        public static readonly string DefaultAppDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName);
+        public static readonly string LocationPointerPath = Path.Combine(DefaultAppDir, "datalocation.txt");
+
+        public static readonly string AppDir = ResolveAppDir();
         public static readonly string DbPath = Path.Combine(AppDir, "notes.db");
         public static readonly string ImagesDir = Path.Combine(AppDir, "images");
         public static readonly string AttachmentsDir = Path.Combine(AppDir, "attachments");
@@ -22,6 +30,64 @@ namespace StickyNotes__
             Directory.CreateDirectory(AppDir);
             Directory.CreateDirectory(ImagesDir);
             Directory.CreateDirectory(AttachmentsDir);
+        }
+
+        private static string ResolveAppDir()
+        {
+            try
+            {
+                if (File.Exists(LocationPointerPath))
+                {
+                    string customPath = File.ReadAllText(LocationPointerPath).Trim();
+                    if (!string.IsNullOrEmpty(customPath))
+                    {
+                        return customPath;
+                    }
+                }
+            }
+            catch { }
+
+            return DefaultAppDir;
+        }
+
+        // Copies the current data folder (db, images, attachments, settings) to newDir, points
+        // future launches at it via the pointer file, then removes the old folder's contents.
+        // Callers are responsible for restarting the app afterward -- AppDir et al. are
+        // static readonly and were already resolved at startup.
+        public static void RelocateDataDirectory(string newDir)
+        {
+            string oldDir = AppDir;
+            if (string.Equals(Path.GetFullPath(oldDir).TrimEnd('\\', '/'), Path.GetFullPath(newDir).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+                return;
+
+            Directory.CreateDirectory(newDir);
+            CopyDirectoryRecursive(oldDir, newDir);
+
+            Directory.CreateDirectory(DefaultAppDir);
+            File.WriteAllText(LocationPointerPath, newDir);
+
+            try
+            {
+                Directory.Delete(oldDir, true);
+            }
+            catch { /* Best-effort -- the copy already succeeded, so a locked leftover file here isn't critical. */ }
+        }
+
+        private static void CopyDirectoryRecursive(string sourceDir, string destDir)
+        {
+            Directory.CreateDirectory(destDir);
+
+            foreach (var file in Directory.GetFiles(sourceDir))
+            {
+                string destFile = Path.Combine(destDir, Path.GetFileName(file));
+                File.Copy(file, destFile, true);
+            }
+
+            foreach (var subDir in Directory.GetDirectories(sourceDir))
+            {
+                string destSubDir = Path.Combine(destDir, Path.GetFileName(subDir));
+                CopyDirectoryRecursive(subDir, destSubDir);
+            }
         }
     }
 
@@ -368,6 +434,55 @@ namespace StickyNotes__
                 var cleanupCmd = conn.CreateCommand();
                 cleanupCmd.CommandText = "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags);";
                 cleanupCmd.ExecuteNonQuery();
+            }
+        }
+
+        // Deletes every note and all related data (tags, history, connections, attachments) and
+        // their backing files on disk. Used by the "Clear All Notes" option in Settings.
+        public static void ClearAllNotes()
+        {
+            var attachmentPaths = new List<string>();
+            var imagePaths = new List<string>();
+
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+
+                var attCmd = conn.CreateCommand();
+                attCmd.CommandText = "SELECT file_path FROM note_attachments;";
+                using (var reader = attCmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (!reader.IsDBNull(0)) attachmentPaths.Add(reader.GetString(0));
+                    }
+                }
+
+                var imgCmd = conn.CreateCommand();
+                imgCmd.CommandText = "SELECT image_path FROM notes WHERE image_path IS NOT NULL;";
+                using (var reader = imgCmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (!reader.IsDBNull(0)) imagePaths.Add(reader.GetString(0));
+                    }
+                }
+
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    DELETE FROM note_attachments;
+                    DELETE FROM note_connections;
+                    DELETE FROM note_history;
+                    DELETE FROM note_tags;
+                    DELETE FROM tags;
+                    DELETE FROM notes;
+                ";
+                cmd.ExecuteNonQuery();
+            }
+
+            foreach (var path in attachmentPaths.Concat(imagePaths))
+            {
+                try { if (File.Exists(path)) File.Delete(path); } catch { }
             }
         }
 

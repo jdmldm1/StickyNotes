@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Navigation;
 using System.Windows.Threading;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace StickyNotes__
 {
@@ -25,6 +26,8 @@ namespace StickyNotes__
         private string _lastHistoryContent = "";
         private string _lastHistoryPlain = "";
         private DateTime _lastHistoryTime = DateTime.Now;
+        private bool _isAiChatActive;
+        private Border? _typingBubble;
 
         private static readonly string[] TabAccentColors = { "#D49A13", "#1A8F54", "#C2185B", "#7B1FA2", "#0288D1", "#424242" };
 
@@ -284,7 +287,12 @@ namespace StickyNotes__
             ManagerRichTextBox.Visibility = Visibility.Visible;
             EditorFooterGrid.Visibility = Visibility.Visible;
 
-            EditorTitleText.Text = string.IsNullOrEmpty(note.Title) ? "Sticky Note" : note.Title;
+            // Chat is per-note context, so switching notes closes any chat left open for the last one.
+            _isAiChatActive = false;
+            AiChatPanel.Visibility = Visibility.Collapsed;
+            ChatHistoryPanel.Children.Clear();
+
+            EditorTitleBox.Text = note.Title ?? "";
             EditorFavoriteButton.Content = note.IsFavorite ? "★" : "☆";
             EditorFavoriteButton.Foreground = note.IsFavorite ? new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)) : new SolidColorBrush(Color.FromArgb(0x80, 0xff, 0xff, 0xff));
 
@@ -297,11 +305,34 @@ namespace StickyNotes__
                     ManagerRichTextBox.Document.Blocks.Add(new Paragraph(new Run(note.Content)));
                 }
             }
+
+            // The note's title is stored as the first line of its content (see SaveCurrentNote),
+            // so drop it from the body -- it's already shown, editable, in the title box above
+            // instead of being repeated inside the editor. Rich notes keep each line as its own
+            // Paragraph, so the whole first block can just be removed -- but legacy/plain-text
+            // notes can have the entire multi-line body squashed into one Paragraph/Run, in which
+            // case only the text up to the first line break should go, not the whole block.
+            if (ManagerRichTextBox.Document.Blocks.FirstBlock is Paragraph firstParagraph)
+            {
+                string firstParagraphText = new TextRange(firstParagraph.ContentStart, firstParagraph.ContentEnd).Text;
+                int firstNewline = firstParagraphText.IndexOf('\n');
+                if (firstNewline < 0)
+                {
+                    ManagerRichTextBox.Document.Blocks.Remove(firstParagraph);
+                }
+                else
+                {
+                    string remainder = firstParagraphText.Substring(firstNewline + 1);
+                    firstParagraph.Inlines.Clear();
+                    firstParagraph.Inlines.Add(new Run(remainder));
+                }
+            }
+
             NoteContentHelper.RewireInteractiveElements(ManagerRichTextBox.Document, Hyperlink_RequestNavigate);
 
             TextRange initRange = new TextRange(ManagerRichTextBox.Document.ContentStart, ManagerRichTextBox.Document.ContentEnd);
             _lastHistoryContent = note.Content ?? "";
-            _lastHistoryPlain = initRange.Text.Trim();
+            _lastHistoryPlain = (note.Title ?? "") + "\n" + initRange.Text.Trim();
             _lastHistoryTime = DateTime.Now;
 
             RefreshEditorCategoryCombo();
@@ -330,8 +361,51 @@ namespace StickyNotes__
         private void RefreshEditorTags()
         {
             if (_currentNote == null) return;
-            var tags = DatabaseHelper.GetNoteTags(_currentNote.Id);
-            EditorTagsText.Text = tags.Count > 0 ? string.Join("  ", tags.Select(t => $"#{t}")) : "No tags";
+            EditorTagsItemsControl.ItemsSource = DatabaseHelper.GetNoteTags(_currentNote.Id);
+        }
+
+        private void EditorAddTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentNote == null) return;
+            int id = _currentNote.Id;
+
+            var existingNoteTags = new HashSet<string>(DatabaseHelper.GetNoteTags(id), StringComparer.OrdinalIgnoreCase);
+            var availableTags = DatabaseHelper.ListAllTags().Where(t => !existingNoteTags.Contains(t)).ToList();
+
+            var menu = new ContextMenu();
+
+            if (availableTags.Count > 0)
+            {
+                foreach (var tag in availableTags)
+                {
+                    var item = new MenuItem { Header = $"#{tag}" };
+                    string tagCopy = tag;
+                    item.Click += (s, args) =>
+                    {
+                        DatabaseHelper.AddTagToNote(id, tagCopy);
+                        RefreshEditorTags();
+                        _owner.RefreshTagsFilter();
+                    };
+                    menu.Items.Add(item);
+                }
+                menu.Items.Add(new Separator());
+            }
+
+            var newTagItem = new MenuItem { Header = "+ New Tag..." };
+            newTagItem.Click += (s, args) =>
+            {
+                string tag = InputBox.Show("Add Tag", "Enter tag name:");
+                if (!string.IsNullOrEmpty(tag))
+                {
+                    DatabaseHelper.AddTagToNote(id, tag);
+                    RefreshEditorTags();
+                    _owner.RefreshTagsFilter();
+                }
+            };
+            menu.Items.Add(newTagItem);
+
+            menu.PlacementTarget = sender as UIElement;
+            menu.IsOpen = true;
         }
 
         private void EditorCategoryCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -376,6 +450,8 @@ namespace StickyNotes__
             EditorToolbar.Visibility = Visibility.Collapsed;
             ManagerRichTextBox.Visibility = Visibility.Collapsed;
             EditorFooterGrid.Visibility = Visibility.Collapsed;
+            AiChatPanel.Visibility = Visibility.Collapsed;
+            _isAiChatActive = false;
 
             RefreshCategoryTabs();
             RefreshNotesList();
@@ -389,6 +465,13 @@ namespace StickyNotes__
             UpdateWordCount();
         }
 
+        private void EditorTitleBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_isLoadingNote) return;
+            _saveTimer.Stop();
+            _saveTimer.Start();
+        }
+
         private void UpdateWordCount()
         {
             string plainText = new TextRange(ManagerRichTextBox.Document.ContentStart, ManagerRichTextBox.Document.ContentEnd).Text;
@@ -400,20 +483,23 @@ namespace StickyNotes__
         {
             if (_currentNote == null) return;
 
+            string title = EditorTitleBox.Text.Trim();
+
+            // The rest of the app stores a note's title as the first line of its content (see
+            // NoteWindow.SaveNoteContent), so temporarily prepend a title paragraph before
+            // serializing -- keeps the DB format consistent even though the editor here shows
+            // title and body as separate, non-duplicated areas.
+            var titleParagraph = new Paragraph(new Run(title));
+            if (ManagerRichTextBox.Document.Blocks.FirstBlock != null)
+                ManagerRichTextBox.Document.Blocks.InsertBefore(ManagerRichTextBox.Document.Blocks.FirstBlock, titleParagraph);
+            else
+                ManagerRichTextBox.Document.Blocks.Add(titleParagraph);
+
             TextRange range = new TextRange(ManagerRichTextBox.Document.ContentStart, ManagerRichTextBox.Document.ContentEnd);
             string xamlText = NoteContentHelper.SaveRange(range);
-
             string plainText = range.Text.Trim();
-            string title = "";
-            if (!string.IsNullOrEmpty(plainText))
-            {
-                int firstNewline = plainText.IndexOf('\n');
-                string firstLine = firstNewline > 0 ? plainText.Substring(0, firstNewline) : plainText;
-                title = firstLine.Trim();
-                if (title.Length > 25) title = title.Substring(0, 25) + "...";
-            }
 
-            EditorTitleText.Text = string.IsNullOrEmpty(title) ? "Sticky Note" : title;
+            ManagerRichTextBox.Document.Blocks.Remove(titleParagraph);
 
             _currentNote.Title = title;
             _currentNote.Content = xamlText;
@@ -452,6 +538,235 @@ namespace StickyNotes__
             {
                 NoteContentHelper.ToggleChecklistItem(checklistRun);
                 e.Handled = true;
+            }
+        }
+
+        #endregion
+
+        #region AI Features (Quick Format + Chat)
+
+        private void AiFormatButton_Click(object sender, RoutedEventArgs e)
+        {
+            var menu = new ContextMenu();
+
+            var summarizeItem = new MenuItem { Header = "Summarize Note" };
+            summarizeItem.Click += async (s, args) => await ApplyAiFormatAsync("Summarize this text in 2-3 short sentences, preserving key details: ");
+            menu.Items.Add(summarizeItem);
+
+            var bulletItem = new MenuItem { Header = "Format as Bullet Points" };
+            bulletItem.Click += async (s, args) => await ApplyAiFormatAsync("Rewrite this text as a clean bulleted list, preserving all key details: ");
+            menu.Items.Add(bulletItem);
+
+            var grammarItem = new MenuItem { Header = "Correct Grammar & Spelling" };
+            grammarItem.Click += async (s, args) => await ApplyAiFormatAsync("Fix all spelling, punctuation, and grammatical errors in this text. Do not change style or rewrite unnecessarily, just fix mistakes: ");
+            menu.Items.Add(grammarItem);
+
+            var professionalItem = new MenuItem { Header = "Rewrite Professionally" };
+            professionalItem.Click += async (s, args) => await ApplyAiFormatAsync("Rewrite this text to have a highly professional, polite, and clear business tone: ");
+            menu.Items.Add(professionalItem);
+
+            menu.Items.Add(new Separator());
+
+            var actionItemsItem = new MenuItem { Header = "Extract Action Items" };
+            actionItemsItem.Click += async (s, args) => await ExtractActionItemsAsync();
+            menu.Items.Add(actionItemsItem);
+
+            menu.PlacementTarget = sender as UIElement;
+            menu.IsOpen = true;
+        }
+
+        private async Task ApplyAiFormatAsync(string promptPrefix)
+        {
+            if (_currentNote == null) return;
+            TextRange range = new TextRange(ManagerRichTextBox.Document.ContentStart, ManagerRichTextBox.Document.ContentEnd);
+            string plainText = range.Text.Trim();
+            if (string.IsNullOrEmpty(plainText)) return;
+
+            var oldCursor = this.Cursor;
+            this.Cursor = Cursors.Wait;
+            try
+            {
+                string prompt = promptPrefix + "\n\nText:\n" + plainText;
+                string aiOutput = await AiHelper.GenerateTextAsync(prompt);
+                if (!string.IsNullOrEmpty(aiOutput))
+                {
+                    ManagerRichTextBox.Document.Blocks.Clear();
+                    ManagerRichTextBox.Document.Blocks.Add(new Paragraph(new Run(aiOutput)));
+                    SaveCurrentNote();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("AI formatting failed: " + ex.Message, "AI Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                this.Cursor = oldCursor;
+            }
+        }
+
+        // Unlike the options above, this appends to the note rather than replacing it.
+        private async Task ExtractActionItemsAsync()
+        {
+            if (_currentNote == null) return;
+            TextRange range = new TextRange(ManagerRichTextBox.Document.ContentStart, ManagerRichTextBox.Document.ContentEnd);
+            string plainText = range.Text.Trim();
+            if (string.IsNullOrEmpty(plainText)) return;
+
+            var oldCursor = this.Cursor;
+            this.Cursor = Cursors.Wait;
+            try
+            {
+                string prompt = "Extract any action items, to-dos, or follow-up tasks mentioned in the following text. " +
+                    "Respond with ONLY a JSON array of short task strings (no explanations, no markdown, no code fences). " +
+                    "If there are no action items, respond with an empty array [].\n\nText:\n" + plainText;
+
+                string aiOutput = await AiHelper.GenerateTextAsync(prompt);
+                var tasks = AiHelper.ParseJsonStringArray(aiOutput).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+
+                if (tasks.Count == 0)
+                {
+                    MessageBox.Show("No action items were found in this note.", "Extract Action Items", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var heading = new Paragraph(new Run("Action Items")) { FontWeight = FontWeights.Bold, FontSize = 13, Margin = new Thickness(0, 10, 0, 3) };
+                ManagerRichTextBox.Document.Blocks.Add(heading);
+                foreach (var task in tasks)
+                {
+                    ManagerRichTextBox.Document.Blocks.Add(new Paragraph(new Run(NoteContentHelper.UncheckedGlyph + task.Trim())));
+                }
+
+                SaveCurrentNote();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("AI extraction failed: " + ex.Message, "AI Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                this.Cursor = oldCursor;
+            }
+        }
+
+        private void AiChatToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentNote == null) return;
+            _isAiChatActive = !_isAiChatActive;
+
+            if (_isAiChatActive)
+            {
+                AiChatPanel.Visibility = Visibility.Visible;
+                AiPromptTextBox.Focus();
+
+                if (ChatHistoryPanel.Children.Count == 0)
+                {
+                    AddChatBubble("Hello! I am your AI assistant. You can ask me questions about this note.", false);
+                }
+            }
+            else
+            {
+                AiChatPanel.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private async void SendAiPrompt_Click(object sender, RoutedEventArgs e)
+        {
+            await ProcessAiChatQueryAsync();
+        }
+
+        private async void AiPromptTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                await ProcessAiChatQueryAsync();
+            }
+        }
+
+        private async Task ProcessAiChatQueryAsync()
+        {
+            string query = AiPromptTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(query)) return;
+
+            AiPromptTextBox.Text = "";
+            AddChatBubble(query, true);
+            ShowTypingIndicator();
+
+            try
+            {
+                TextRange range = new TextRange(ManagerRichTextBox.Document.ContentStart, ManagerRichTextBox.Document.ContentEnd);
+                string noteText = range.Text.Trim();
+
+                string prompt = $"You are a helpful desktop note assistant. Answer the user's question contextually based on the note text provided below. Answer clearly and keep it short.\n\nNote Context:\n{noteText}\n\nUser Question:\n{query}";
+
+                string aiResponse = await AiHelper.GenerateTextAsync(prompt);
+
+                RemoveTypingIndicator();
+                AddChatBubble(string.IsNullOrEmpty(aiResponse) ? "Sorry, I could not generate a response. Please check if Ollama is running." : aiResponse, false);
+            }
+            catch (Exception ex)
+            {
+                RemoveTypingIndicator();
+                AddChatBubble("Error during processing: " + ex.Message, false);
+            }
+        }
+
+        private void AddChatBubble(string text, bool isUser)
+        {
+            var border = new Border
+            {
+                Background = isUser ? new SolidColorBrush(Color.FromRgb(0, 132, 255)) : new SolidColorBrush(Color.FromRgb(40, 40, 40)),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 4, 0, 4),
+                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+                MaxWidth = 320
+            };
+
+            var tb = new TextBlock
+            {
+                Text = text,
+                Foreground = Brushes.White,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            border.Child = tb;
+            ChatHistoryPanel.Children.Add(border);
+            ChatScrollViewer.ScrollToEnd();
+        }
+
+        private void ShowTypingIndicator()
+        {
+            _typingBubble = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 4, 0, 4),
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+
+            var tb = new TextBlock
+            {
+                Text = "AI is thinking...",
+                Foreground = new SolidColorBrush(Color.FromRgb(150, 150, 150)),
+                FontSize = 11,
+                FontStyle = FontStyles.Italic
+            };
+
+            _typingBubble.Child = tb;
+            ChatHistoryPanel.Children.Add(_typingBubble);
+            ChatScrollViewer.ScrollToEnd();
+        }
+
+        private void RemoveTypingIndicator()
+        {
+            if (_typingBubble != null)
+            {
+                ChatHistoryPanel.Children.Remove(_typingBubble);
+                _typingBubble = null;
             }
         }
 
