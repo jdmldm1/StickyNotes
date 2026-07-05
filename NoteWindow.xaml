@@ -108,13 +108,33 @@
                     <Button Width="26" Height="24" Click="FormatHighlight_Click" ToolTip="Highlight" Background="Transparent" BorderThickness="0" Foreground="#FFD700" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
                         <TextBlock Text="&#x2590;" FontSize="13"/>
                     </Button>
+                    <Button Width="26" Height="24" Click="FormatTextColor_Click" ToolTip="Text Color" Background="Transparent" BorderThickness="0" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="A" FontWeight="Bold" FontSize="12" FontFamily="Segoe UI" Foreground="#ff6b6b"/>
+                    </Button>
+
+                    <!-- Separator -->
+                    <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                    <!-- Font Size Group -->
+                    <Button Width="24" Height="24" Click="FormatDecreaseFontSize_Click" ToolTip="Decrease Font Size" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="A-" FontSize="10" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="24" Height="24" Click="FormatIncreaseFontSize_Click" ToolTip="Increase Font Size" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="A+" FontSize="10" FontFamily="Segoe UI"/>
+                    </Button>
 
                     <!-- Separator -->
                     <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
 
                     <!-- Block Style Group -->
-                    <Button Width="30" Height="24" Click="FormatHeading_Click" ToolTip="Heading" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                    <Button Width="26" Height="24" Click="FormatHeading1_Click" ToolTip="Heading 1" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
                         <TextBlock Text="H1" FontWeight="Bold" FontSize="10" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="26" Height="24" Click="FormatHeading2_Click" ToolTip="Heading 2" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="H2" FontWeight="Bold" FontSize="10" FontFamily="Segoe UI"/>
+                    </Button>
+                    <Button Width="28" Height="24" Click="FormatBlockquote_Click" ToolTip="Quote Block" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x201C;" FontSize="18" FontWeight="Bold" FontFamily="Georgia"/>
                     </Button>
                     <Button Width="34" Height="24" Click="FormatCodeBlock_Click" ToolTip="Code Block" Background="Transparent" BorderThickness="0" Foreground="#a8ff78" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
                         <TextBlock Text="&lt;/&gt;" FontFamily="Consolas" FontSize="10"/>
@@ -123,15 +143,40 @@
                     <!-- Separator -->
                     <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
 
-                    <!-- List and Insert Group -->
+                    <!-- List Group -->
                     <Button Width="28" Height="24" Click="FormatBulletList_Click" ToolTip="Bullet List" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
                         <TextBlock Text="&#x2261;" FontSize="15" Margin="0,-1,0,0"/>
                     </Button>
+                    <Button Width="28" Height="24" Click="FormatNumberedList_Click" ToolTip="Numbered List" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="1." FontSize="11" FontFamily="Segoe UI" FontWeight="Bold"/>
+                    </Button>
+                    <Button Width="24" Height="24" Click="FormatOutdent_Click" ToolTip="Decrease Indent" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x21E4;" FontSize="12"/>
+                    </Button>
+                    <Button Width="24" Height="24" Click="FormatIndent_Click" ToolTip="Increase Indent" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x21E5;" FontSize="12"/>
+                    </Button>
+
+                    <!-- Separator -->
+                    <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                    <!-- Insert Group -->
                     <Button Width="28" Height="24" Click="InsertCheckbox_Click" ToolTip="Insert Checkbox / Task item" Background="Transparent" BorderThickness="0" Foreground="#88ff88" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
                         <TextBlock Text="&#x2611;" FontSize="13"/>
                     </Button>
                     <Button Width="28" Height="24" Click="InsertHyperlink_Click" ToolTip="Insert Hyperlink" Background="Transparent" BorderThickness="0" Foreground="#4db8ff" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
                         <TextBlock Text="&#x1F517;" FontSize="11"/>
+                    </Button>
+                    <Button Width="28" Height="24" Click="InsertDivider_Click" ToolTip="Insert Divider" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x2015;" FontSize="14"/>
+                    </Button>
+
+                    <!-- Separator -->
+                    <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                    <!-- Clear Formatting -->
+                    <Button Width="28" Height="24" Click="FormatClear_Click" ToolTip="Clear Formatting" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="&#x2715;A" FontSize="10" FontFamily="Segoe UI"/>
                     </Button>
                 </WrapPanel>
             </Border>

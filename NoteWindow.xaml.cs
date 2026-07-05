@@ -1219,24 +1219,169 @@ namespace StickyNotes__
 
         private bool _isAutoFormatting;
 
-        private void FormatHeading_Click(object sender, RoutedEventArgs e)
+        private void FormatHeading1_Click(object sender, RoutedEventArgs e) => ToggleHeading(18.0);
+
+        private void FormatHeading2_Click(object sender, RoutedEventArgs e) => ToggleHeading(15.0);
+
+        private void ToggleHeading(double targetSize)
         {
             var paragraph = NoteRichTextBox.Selection.Start.Paragraph ?? NoteRichTextBox.CaretPosition.Paragraph;
             if (paragraph == null) return;
 
             var range = new TextRange(paragraph.ContentStart, paragraph.ContentEnd);
-            bool isHeading = range.GetPropertyValue(TextElement.FontSizeProperty) is double size && size >= 17.0;
+            bool isThisHeading = range.GetPropertyValue(TextElement.FontSizeProperty) is double size && Math.Abs(size - targetSize) < 0.5;
 
-            if (isHeading)
+            if (isThisHeading)
             {
-                range.ApplyPropertyValue(TextElement.FontSizeProperty, 13.0);
+                range.ApplyPropertyValue(TextElement.FontSizeProperty, 14.0);
                 range.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Normal);
             }
             else
             {
-                range.ApplyPropertyValue(TextElement.FontSizeProperty, 18.0);
+                range.ApplyPropertyValue(TextElement.FontSizeProperty, targetSize);
                 range.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Bold);
             }
+            NoteRichTextBox.Focus();
+        }
+
+        private void FormatTextColor_Click(object sender, RoutedEventArgs e)
+        {
+            var colors = new (string Name, Color Color)[]
+            {
+                ("White",  Colors.White),
+                ("Red",    Color.FromRgb(0xff, 0x6b, 0x6b)),
+                ("Orange", Color.FromRgb(0xff, 0xa5, 0x4d)),
+                ("Yellow", Color.FromRgb(0xff, 0xd7, 0x00)),
+                ("Green",  Color.FromRgb(0x6b, 0xff, 0x8f)),
+                ("Blue",   Color.FromRgb(0x4d, 0xb8, 0xff)),
+                ("Purple", Color.FromRgb(0xc9, 0x8b, 0xff)),
+            };
+
+            var menu = new ContextMenu();
+            foreach (var (name, color) in colors)
+            {
+                var swatch = new Border
+                {
+                    Width = 13,
+                    Height = 13,
+                    Background = new SolidColorBrush(color),
+                    CornerRadius = new CornerRadius(3),
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                var stack = new StackPanel { Orientation = Orientation.Horizontal };
+                stack.Children.Add(swatch);
+                stack.Children.Add(new TextBlock { Text = name, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
+
+                var item = new MenuItem { Header = stack };
+                var capturedColor = color;
+                item.Click += (s, args) =>
+                {
+                    if (!NoteRichTextBox.Selection.IsEmpty)
+                        NoteRichTextBox.Selection.ApplyPropertyValue(TextElement.ForegroundProperty, new SolidColorBrush(capturedColor));
+                    NoteRichTextBox.Focus();
+                };
+                menu.Items.Add(item);
+            }
+
+            menu.PlacementTarget = sender as UIElement;
+            menu.IsOpen = true;
+        }
+
+        private void FormatIncreaseFontSize_Click(object sender, RoutedEventArgs e) => AdjustFontSize(2);
+
+        private void FormatDecreaseFontSize_Click(object sender, RoutedEventArgs e) => AdjustFontSize(-2);
+
+        private void AdjustFontSize(double delta)
+        {
+            if (NoteRichTextBox.Selection.IsEmpty) return;
+
+            double current = NoteRichTextBox.Selection.GetPropertyValue(TextElement.FontSizeProperty) is double size ? size : 14.0;
+            double next = Math.Max(8.0, Math.Min(48.0, current + delta));
+            NoteRichTextBox.Selection.ApplyPropertyValue(TextElement.FontSizeProperty, next);
+            NoteRichTextBox.Focus();
+        }
+
+        private void FormatBlockquote_Click(object sender, RoutedEventArgs e)
+        {
+            var paragraph = NoteRichTextBox.Selection.Start.Paragraph ?? NoteRichTextBox.CaretPosition.Paragraph;
+            if (paragraph == null) return;
+
+            var range = new TextRange(paragraph.ContentStart, paragraph.ContentEnd);
+            bool isQuote = paragraph.BorderThickness.Left > 0;
+
+            if (isQuote)
+            {
+                paragraph.BorderThickness = new Thickness(0);
+                paragraph.Padding = new Thickness(0);
+                paragraph.FontStyle = FontStyles.Normal;
+                range.ApplyPropertyValue(TextElement.ForegroundProperty, Brushes.White);
+            }
+            else
+            {
+                paragraph.BorderThickness = new Thickness(3, 0, 0, 0);
+                paragraph.BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55));
+                paragraph.Padding = new Thickness(10, 2, 0, 2);
+                paragraph.Margin = new Thickness(0, 4, 0, 4);
+                paragraph.FontStyle = FontStyles.Italic;
+                range.ApplyPropertyValue(TextElement.ForegroundProperty, new SolidColorBrush(Color.FromRgb(0xcc, 0xcc, 0xcc)));
+            }
+            NoteRichTextBox.Focus();
+        }
+
+        private void FormatNumberedList_Click(object sender, RoutedEventArgs e)
+        {
+            EditingCommands.ToggleNumbering.Execute(null, NoteRichTextBox);
+            NoteRichTextBox.Focus();
+        }
+
+        private void FormatIndent_Click(object sender, RoutedEventArgs e)
+        {
+            EditingCommands.IncreaseIndentation.Execute(null, NoteRichTextBox);
+            NoteRichTextBox.Focus();
+        }
+
+        private void FormatOutdent_Click(object sender, RoutedEventArgs e)
+        {
+            EditingCommands.DecreaseIndentation.Execute(null, NoteRichTextBox);
+            NoteRichTextBox.Focus();
+        }
+
+        private void InsertDivider_Click(object sender, RoutedEventArgs e)
+        {
+            var divider = new Paragraph(new Run(""))
+            {
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Margin = new Thickness(0, 10, 0, 10)
+            };
+
+            var caretParagraph = NoteRichTextBox.CaretPosition.Paragraph;
+            if (caretParagraph != null)
+                NoteRichTextBox.Document.Blocks.InsertAfter(caretParagraph, divider);
+            else
+                NoteRichTextBox.Document.Blocks.Add(divider);
+
+            // Insert a following empty paragraph so typing continues below the divider
+            // rather than inside the border-only one.
+            var following = new Paragraph(new Run(""));
+            NoteRichTextBox.Document.Blocks.InsertAfter(divider, following);
+            NoteRichTextBox.CaretPosition = following.ContentStart;
+
+            NoteRichTextBox.Focus();
+        }
+
+        private void FormatClear_Click(object sender, RoutedEventArgs e)
+        {
+            if (NoteRichTextBox.Selection.IsEmpty) return;
+
+            var selection = NoteRichTextBox.Selection;
+            selection.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Normal);
+            selection.ApplyPropertyValue(TextElement.FontStyleProperty, FontStyles.Normal);
+            selection.ApplyPropertyValue(Inline.TextDecorationsProperty, null);
+            selection.ApplyPropertyValue(TextElement.FontSizeProperty, 14.0);
+            selection.ApplyPropertyValue(TextElement.FontFamilyProperty, new FontFamily("Segoe UI Variable Text, Segoe UI, sans-serif"));
+            selection.ApplyPropertyValue(TextElement.ForegroundProperty, Brushes.White);
+            selection.ApplyPropertyValue(TextElement.BackgroundProperty, Brushes.Transparent);
             NoteRichTextBox.Focus();
         }
 
