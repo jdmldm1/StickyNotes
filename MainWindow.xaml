@@ -99,10 +99,10 @@
                                 Width="20" Height="20" FontSize="10" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
                     </StackPanel>
 
-                    <!-- Text Snippet -->
-                    <TextBlock Grid.Row="1" Grid.ColumnSpan="4" Text="{Binding Snippet}" 
-                               Foreground="{Binding CardTextBrush}" FontSize="12" Margin="0,6,0,0" 
-                               TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Opacity="0.8" MaxHeight="60"/>
+                    <!-- Text Snippet (single line, since the title already shows the note's first line) -->
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="4" Text="{Binding Snippet}"
+                               Foreground="{Binding CardTextBrush}" FontSize="12" Margin="0,4,0,0"
+                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Opacity="0.8"/>
 
                     <!-- Task Progress Bar -->
                     <Grid Grid.Row="2" Grid.ColumnSpan="4" Margin="0,8,0,0" Visibility="{Binding TaskProgressVisibility}">
@@ -120,9 +120,45 @@
                         <Image Source="{Binding ThumbnailSource}" Stretch="Uniform"/>
                     </Border>
 
-                    <!-- Note Tags -->
-                    <TextBlock Grid.Row="4" Grid.ColumnSpan="4" Text="{Binding TagsList}" 
-                               Foreground="{Binding CardTextBrush}" FontSize="9" Margin="0,8,0,0" Opacity="0.6"/>
+                    <!-- Footer: tag pills (lower-left) + quick-add pill + last-updated date (lower-right) -->
+                    <Grid Grid.Row="4" Grid.ColumnSpan="4" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                            <ItemsControl ItemsSource="{Binding Tags}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#22ffffff" CornerRadius="8" Padding="7,2" Margin="0,0,4,4">
+                                            <TextBlock FontSize="9" Foreground="#dddddd">
+                                                <Run Text="#"/><Run Text="{Binding Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Button Content="+" Click="QuickAddTagButton_Click" Tag="{Binding Id}" ToolTip="Quick add tag"
+                                    Width="18" Height="18" Padding="0" FontSize="10" Margin="0,0,4,4"
+                                    Background="#22ffffff" Foreground="#bbbbbb" BorderThickness="0" Cursor="Hand">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="9"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                        </WrapPanel>
+
+                        <TextBlock Grid.Column="1" Text="{Binding DateText}" Foreground="{Binding CardTextBrush}"
+                                   FontSize="9" Opacity="0.55" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    </Grid>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -183,10 +219,12 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- New Note Button (primary CTA) + template picker -->
+                    <!-- New Note Button (primary CTA) + template picker + Note Manager -->
                     <Grid Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="6"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
@@ -223,6 +261,22 @@
                                 </Style>
                             </Button.Resources>
                             <TextBlock Text="▾" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+
+                        <!-- Note Manager (full-screen tabbed browse/edit view) -->
+                        <Button Grid.Column="4" Click="NoteManagerButton_Click" ToolTip="Open Note Manager" Width="38" Height="38" Cursor="Hand" BorderThickness="0">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#0d4a4a" Offset="0"/>
+                                    <GradientStop Color="#127a7a" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="8"/>
+                                </Style>
+                            </Button.Resources>
+                            <TextBlock Text="📓" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
                     </Grid>
 
@@ -321,39 +375,10 @@
                     </Grid>
                 </Grid>
 
-                <!-- Sidebar Tab Navigation Row (Row 2) -->
-                <Grid Grid.Row="2" Margin="0,0,0,15">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- My Notes Tab Button -->
-                    <Button x:Name="NotesTabButton" Grid.Column="0" Content="My Notes" Click="NotesTabButton_Click" Margin="0,0,3,0" Height="28"
-                            Background="#0084ff" Foreground="#ffffff" FontWeight="SemiBold" FontSize="11" BorderThickness="0" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="4"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
-
-                    <!-- Clipboard History Tab Button -->
-                    <Button x:Name="ClipboardTabButton" Grid.Column="1" Content="Clipboard" Click="ClipboardTabButton_Click" Margin="3,0,0,0" Height="28"
-                            Background="#1e1e1e" Foreground="#888888" FontWeight="Normal" FontSize="11" BorderThickness="0" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="4"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
-                </Grid>
-
                 <!-- Search Panel Grid (Row 2) -->
                 <Grid x:Name="SearchPanel" Grid.Row="3" Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
@@ -379,15 +404,6 @@
 
                     <!-- Advanced/Spotlight search (tag+category+time filters, snippets). Same feature as Win+Alt+Space. -->
                     <Button Grid.Column="1" x:Name="SpotlightButton" Content="🔎" Click="SpotlightButton_Click" ToolTip="Advanced search (Win+Alt+Space)" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="13" BorderThickness="0" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="6"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
-
-                    <!-- AI Auto Organize Button -->
-                    <Button Grid.Column="2" x:Name="AutoOrganizeButton" Content="🪄 Auto Organize" Click="AutoOrganizeButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="11" BorderThickness="0" Cursor="Hand">
                         <Button.Resources>
                             <Style TargetType="Border">
                                 <Setter Property="CornerRadius" Value="6"/>
@@ -453,45 +469,6 @@
                     <StackPanel x:Name="NotesGroupPanel"/>
                 </ScrollViewer>
 
-                <!-- Clipboard List (Row 6 - Collapsed by default) -->
-                <ScrollViewer x:Name="ClipboardScrollViewer" Grid.Row="7" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
-                    <ItemsControl x:Name="ClipboardItemsControl">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <!-- Clipboard Item Card -->
-                                <Border Margin="0,0,0,12" CornerRadius="8" BorderThickness="1" BorderBrush="#333333" Background="#161616" Padding="10">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <!-- Preview Content -->
-                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <!-- Text snippet -->
-                                            <TextBlock Text="{Binding Snippet}" Foreground="#ffffff" FontSize="12.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Visibility="{Binding TextVisibility}"/>
-                                            <!-- Image preview -->
-                                            <Image Source="{Binding ImageSource}" MaxHeight="80" Stretch="Uniform" HorizontalAlignment="Left" Visibility="{Binding ImageVisibility}"/>
-                                            <!-- Timestamp info -->
-                                            <TextBlock Text="{Binding TimeDisplay}" Foreground="#555555" FontSize="10" Margin="0,4,0,0"/>
-                                        </StackPanel>
-
-                                        <!-- Convert Button -->
-                                        <Button Grid.Column="1" Click="CreateNoteFromClipboard_Click" Tag="{Binding Id}"
-                                                Width="32" Height="32" Background="#0084ff" Foreground="#ffffff" FontSize="14" FontWeight="Bold" Cursor="Hand" VerticalAlignment="Center" Margin="10,0,0,0" ToolTip="Convert to Note">
-                                            <TextBlock Text="+" Margin="0,-2,0,0"/>
-                                            <Button.Resources>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="CornerRadius" Value="16"/>
-                                                </Style>
-                                            </Button.Resources>
-                                        </Button>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
             </Grid>
 
             <!-- Status Toast Overlay (shown during OCR / AI processing) -->

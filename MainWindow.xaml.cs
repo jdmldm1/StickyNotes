@@ -16,6 +16,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using System.Threading.Tasks;
 
 
 namespace StickyNotes__
@@ -31,6 +32,8 @@ namespace StickyNotes__
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private SpotlightWindow? _spotlightWnd;
         private QuickCaptureWindow? _quickCaptureWnd;
+        private NoteManagerWindow? _noteManagerWnd;
+        private ClipboardPickerWindow? _clipboardPickerWnd;
         private string _sortOrder = "date"; // "date" or "category"
 
 
@@ -356,6 +359,21 @@ namespace StickyNotes__
             ToggleSpotlight();
         }
 
+        private void NoteManagerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_noteManagerWnd == null || !_noteManagerWnd.IsLoaded)
+            {
+                _noteManagerWnd = new NoteManagerWindow(this);
+                _noteManagerWnd.Show();
+            }
+            else
+            {
+                _noteManagerWnd.Activate();
+                if (_noteManagerWnd.WindowState == WindowState.Minimized)
+                    _noteManagerWnd.WindowState = WindowState.Normal;
+            }
+        }
+
         private void ToggleSpotlight()
         {
             if (_spotlightWnd == null) return;
@@ -431,17 +449,23 @@ namespace StickyNotes__
             // Favorites always float to the top, then newest first within each group
             var sortedNotes = notes.OrderByDescending(n => n.IsFavorite).ThenByDescending(n => n.UpdatedAt).ToList();
 
-            var viewModels = sortedNotes.Select(n => new NoteCardViewModel
+            var viewModels = sortedNotes.Select(n =>
             {
-                Id = n.Id,
-                Title = n.Title,
-                Color = n.Color,
-                Snippet = GetPlainTextFromXaml(n.Content),
-                ImagePath = n.ImagePath,
-                Tags = DatabaseHelper.GetNoteTags(n.Id),
-                Category = n.Category ?? "General",
-                IsFavorite = n.IsFavorite,
-                QuickOpenItems = BuildQuickOpenItems(n)
+                string fullText = GetPlainTextFromXaml(n.Content);
+                return new NoteCardViewModel
+                {
+                    Id = n.Id,
+                    Title = n.Title,
+                    Color = n.Color,
+                    Snippet = BuildCardSnippet(fullText),
+                    FullPlainText = fullText,
+                    ImagePath = n.ImagePath,
+                    Tags = DatabaseHelper.GetNoteTags(n.Id),
+                    Category = n.Category ?? "General",
+                    IsFavorite = n.IsFavorite,
+                    UpdatedAt = n.UpdatedAt,
+                    QuickOpenItems = BuildQuickOpenItems(n)
+                };
             }).ToList();
 
             var template = (DataTemplate)this.FindResource("NoteCardTemplate");
@@ -489,22 +513,63 @@ namespace StickyNotes__
             }
             else
             {
-                // Flat chronological list
-                var itemsControl = new ItemsControl
+                // Flat chronological list, but favorites get their own always-visible section up
+                // top so it's obvious why a just-edited note isn't at the very top of the list --
+                // everything else lives in a collapsible "Notes" section below.
+                var favorites = viewModels.Where(vm => vm.IsFavorite).ToList();
+                var rest = viewModels.Where(vm => !vm.IsFavorite).ToList();
+
+                if (favorites.Count > 0)
+                {
+                    var favoritesHeader = new TextBlock
+                    {
+                        Text = $"★ Favorites ({favorites.Count})",
+                        Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)),
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12.5,
+                        Margin = new Thickness(0, 0, 0, 8)
+                    };
+                    NotesGroupPanel.Children.Add(favoritesHeader);
+
+                    var favoritesItemsControl = new ItemsControl
+                    {
+                        ItemTemplate = template,
+                        ItemsSource = favorites,
+                        Margin = new Thickness(0, 0, 0, 12)
+                    };
+                    NotesGroupPanel.Children.Add(favoritesItemsControl);
+                }
+
+                const string notesExpanderKey = "__notes__";
+                var notesExpander = new Expander
+                {
+                    Header = $"Notes ({rest.Count})",
+                    Foreground = Brushes.White,
+                    FontWeight = FontWeights.Bold,
+                    FontSize = 12.5,
+                    Margin = new Thickness(0, 0, 0, 12),
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0)
+                };
+                notesExpander.IsExpanded = !_expanderStates.ContainsKey(notesExpanderKey) || _expanderStates[notesExpanderKey];
+                notesExpander.Expanded += (s, e) => _expanderStates[notesExpanderKey] = true;
+                notesExpander.Collapsed += (s, e) => _expanderStates[notesExpanderKey] = false;
+
+                var restItemsControl = new ItemsControl
                 {
                     ItemTemplate = template,
-                    ItemsSource = viewModels
+                    ItemsSource = rest,
+                    Margin = new Thickness(6, 8, 0, 0)
                 };
-                NotesGroupPanel.Children.Add(itemsControl);
+                notesExpander.Content = restItemsControl;
+                NotesGroupPanel.Children.Add(notesExpander);
             }
         }
 
-        private async void AutoOrganizeButton_Click(object sender, RoutedEventArgs e)
+        // Invoked from the Settings window -- this is a one-time/occasional utility, not
+        // something used often enough to justify permanent sidebar real estate.
+        public async Task RunAutoOrganizeAsync()
         {
-            AutoOrganizeButton.IsEnabled = false;
-            string originalContent = AutoOrganizeButton.Content.ToString() ?? "🪄 Auto Organize";
-            AutoOrganizeButton.Content = "🪄 Organizing...";
-
             try
             {
                 if (!await AiHelper.IsOllamaRunningAsync())
@@ -617,11 +682,6 @@ namespace StickyNotes__
             {
                 MessageBox.Show($"Organization error: {ex.Message}", "AI Organizer", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-            finally
-            {
-                AutoOrganizeButton.IsEnabled = true;
-                AutoOrganizeButton.Content = originalContent;
-            }
         }
 
         private static Dictionary<string, NoteOrganizationResult>? TryDeserializeMappings(string json)
@@ -670,6 +730,23 @@ namespace StickyNotes__
         }
 
         private string GetPlainTextFromXaml(string xaml) => NoteContentHelper.ExtractPlainText(xaml);
+
+        // A note's title is always derived from the first line of its content (see
+        // NoteWindow.SaveNoteContent), so showing the full plain text under the title repeats
+        // that first line verbatim. Skip it and show only whatever comes after, on one line.
+        private static string BuildCardSnippet(string fullPlainText)
+        {
+            if (string.IsNullOrEmpty(fullPlainText)) return "";
+
+            int firstNewline = fullPlainText.IndexOf('\n');
+            if (firstNewline < 0) return "";
+
+            string rest = fullPlainText.Substring(firstNewline + 1).TrimStart('\r', '\n', ' ', '\t');
+
+            int nextNewline = rest.IndexOf('\n');
+            string firstRemainingLine = nextNewline >= 0 ? rest.Substring(0, nextNewline) : rest;
+            return firstRemainingLine.Trim();
+        }
 
         private static List<QuickOpenItem> BuildQuickOpenItems(Note note)
         {
@@ -732,45 +809,41 @@ namespace StickyNotes__
         {
             TagsFilterPanel.Children.Clear();
 
-            // Clear filter button
-            var allButton = new Button
+            TagsFilterPanel.Children.Add(BuildFilterPill("All", string.IsNullOrEmpty(_selectedTagFilter), () =>
             {
-                Content = "All",
-                Margin = new Thickness(0, 0, 6, 0),
-                Padding = new Thickness(12, 4, 12, 4),
-                Background = string.IsNullOrEmpty(_selectedTagFilter) ? new SolidColorBrush(Color.FromRgb(0, 132, 255)) : new SolidColorBrush(Color.FromRgb(26, 26, 26)),
-                Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
-                FontSize = 11,
-                Cursor = Cursors.Hand
-            };
-            allButton.Click += (s, e) => { _selectedTagFilter = null; _showOnlyStale = false; RefreshTagsFilter(); RefreshNotesList(); };
-            TagsFilterPanel.Children.Add(allButton);
+                _selectedTagFilter = null;
+                _showOnlyStale = false;
+                RefreshTagsFilter();
+                RefreshNotesList();
+            }));
 
             var tags = DatabaseHelper.ListAllTags();
             foreach (var tag in tags)
             {
-                var tagBtn = new Button
-                {
-                    Content = $"#{tag}",
-                    Margin = new Thickness(0, 0, 6, 0),
-                    Padding = new Thickness(12, 4, 12, 4),
-                    Background = _selectedTagFilter == tag ? new SolidColorBrush(Color.FromRgb(0, 132, 255)) : new SolidColorBrush(Color.FromRgb(26, 26, 26)),
-                    Foreground = Brushes.White,
-                    BorderThickness = new Thickness(0),
-                    FontSize = 11,
-                    Cursor = Cursors.Hand
-                };
                 string currentTag = tag;
-                tagBtn.Click += (s, e) =>
+                TagsFilterPanel.Children.Add(BuildFilterPill($"#{tag}", _selectedTagFilter == tag, () =>
                 {
                     _selectedTagFilter = currentTag;
                     _showOnlyStale = false;
                     RefreshTagsFilter();
                     RefreshNotesList();
-                };
-                TagsFilterPanel.Children.Add(tagBtn);
+                }));
             }
+        }
+
+        private static Border BuildFilterPill(string label, bool isSelected, Action onClick)
+        {
+            var border = new Border
+            {
+                Margin = new Thickness(0, 0, 6, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                CornerRadius = new CornerRadius(11),
+                Background = isSelected ? new SolidColorBrush(Color.FromRgb(0, 132, 255)) : new SolidColorBrush(Color.FromRgb(26, 26, 26)),
+                Cursor = Cursors.Hand
+            };
+            border.Child = new TextBlock { Text = label, Foreground = Brushes.White, FontSize = 11 };
+            border.MouseLeftButtonUp += (s, e) => onClick();
+            return border;
         }
 
         private async void TakeRegionScreenshot()
@@ -1010,8 +1083,27 @@ namespace StickyNotes__
                 item.Click += (s, args) => CreateNoteFromTemplate(template);
                 menu.Items.Add(item);
             }
+
+            menu.Items.Add(new Separator());
+            var clipboardItem = new MenuItem { Header = "📋  + From Clipboard" };
+            clipboardItem.Click += (s, args) => OpenClipboardPicker();
+            menu.Items.Add(clipboardItem);
+
             menu.PlacementTarget = TemplateButton;
             menu.IsOpen = true;
+        }
+
+        private void OpenClipboardPicker()
+        {
+            if (_clipboardPickerWnd == null || !_clipboardPickerWnd.IsLoaded)
+            {
+                _clipboardPickerWnd = new ClipboardPickerWindow(this) { Owner = this };
+                _clipboardPickerWnd.Show();
+            }
+            else
+            {
+                _clipboardPickerWnd.Activate();
+            }
         }
 
         private void CreateNoteFromTemplate(NoteTemplateDef template)
@@ -1254,6 +1346,19 @@ namespace StickyNotes__
             }
         }
 
+        private void QuickAddTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int id) return;
+
+            string tag = InputBox.Show("Add Tag", "Enter tag name:");
+            if (!string.IsNullOrEmpty(tag))
+            {
+                DatabaseHelper.AddTagToNote(id, tag);
+                RefreshNotesList();
+                RefreshTagsFilter();
+            }
+        }
+
         private void FavoriteButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is int id)
@@ -1391,50 +1496,10 @@ namespace StickyNotes__
                 _clipboardHistory.RemoveAt(_clipboardHistory.Count - 1);
             }
 
-            ClipboardItemsControl.ItemsSource = null;
-            ClipboardItemsControl.ItemsSource = _clipboardHistory;
+            _clipboardPickerWnd?.RefreshItems();
         }
 
-        private void NotesTabButton_Click(object sender, RoutedEventArgs e)
-        {
-            this.Width = 320;
-
-            NotesTabButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
-            NotesTabButton.Foreground = Brushes.White;
-            NotesTabButton.FontWeight = FontWeights.SemiBold;
-
-            ClipboardTabButton.Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
-            ClipboardTabButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
-            ClipboardTabButton.FontWeight = FontWeights.Normal;
-
-            SearchPanel.Visibility = Visibility.Visible;
-            TagsFilterScrollViewer.Visibility = Visibility.Visible;
-            SortPanel.Visibility = Visibility.Visible;
-            NotesScrollViewer.Visibility = Visibility.Visible;
-            ClipboardScrollViewer.Visibility = Visibility.Collapsed;
-        }
-
-        private void ClipboardTabButton_Click(object sender, RoutedEventArgs e)
-        {
-            this.Width = 320;
-
-            ClipboardTabButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
-            ClipboardTabButton.Foreground = Brushes.White;
-            ClipboardTabButton.FontWeight = FontWeights.SemiBold;
-
-            NotesTabButton.Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
-            NotesTabButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
-            NotesTabButton.FontWeight = FontWeights.Normal;
-
-            SearchPanel.Visibility = Visibility.Collapsed;
-            TagsFilterScrollViewer.Visibility = Visibility.Collapsed;
-            SortPanel.Visibility = Visibility.Collapsed;
-            NotesScrollViewer.Visibility = Visibility.Collapsed;
-            ClipboardScrollViewer.Visibility = Visibility.Visible;
-
-            ClipboardItemsControl.ItemsSource = null;
-            ClipboardItemsControl.ItemsSource = _clipboardHistory;
-        }
+        public IReadOnlyList<ClipboardHistoryItem> ClipboardHistory => _clipboardHistory;
 
         private void SortCategoryButton_Click(object sender, RoutedEventArgs e)
         {
@@ -1460,76 +1525,70 @@ namespace StickyNotes__
             RefreshNotesList();
         }
 
-        private async void CreateNoteFromClipboard_Click(object sender, RoutedEventArgs e)
+        // Shared by the "+ From Clipboard" picker window -- converts a clipboard history entry
+        // into a real note, with the same OCR/AI auto-tagging clipboard items always got.
+        public async Task<int> CreateNoteFromClipboardItemAsync(ClipboardHistoryItem item)
         {
-            if (sender is Button btn && btn.Tag is string id)
+            int noteId;
+            if (item.ImageSource != null)
             {
-                btn.IsEnabled = false;
-                var item = _clipboardHistory.FirstOrDefault(i => i.Id == id);
-                if (item != null)
+                string filename = $"clipboard_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 6)}.png";
+                string filepath = System.IO.Path.Combine(AppConfig.ImagesDir, filename);
+
+                using (var fileStream = new FileStream(filepath, FileMode.Create))
                 {
-                    int noteId;
-                    if (item.ImageSource != null)
+                    BitmapEncoder encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(item.ImageSource));
+                    encoder.Save(fileStream);
+                }
+
+                var ocrResult = await OcrHelper.PerformOcrAsync(filepath);
+                noteId = DatabaseHelper.CreateNote("Clipboard Image", "", filepath, ocrResult.Text, "yellow");
+
+                var tags = new HashSet<string>(ocrResult.Tags);
+                if (await AiHelper.IsOllamaRunningAsync())
+                {
+                    var aiTags = await AiHelper.AutoTagTextAsync(ocrResult.Text);
+                    foreach (var tag in aiTags)
                     {
-                        string filename = $"clipboard_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 6)}.png";
-                        string filepath = System.IO.Path.Combine(AppConfig.ImagesDir, filename);
-
-                        using (var fileStream = new FileStream(filepath, FileMode.Create))
-                        {
-                            BitmapEncoder encoder = new PngBitmapEncoder();
-                            encoder.Frames.Add(BitmapFrame.Create(item.ImageSource));
-                            encoder.Save(fileStream);
-                        }
-
-                        var ocrResult = await OcrHelper.PerformOcrAsync(filepath);
-                        noteId = DatabaseHelper.CreateNote("Clipboard Image", "", filepath, ocrResult.Text, "yellow");
-
-                        var tags = new HashSet<string>(ocrResult.Tags);
-                        if (await AiHelper.IsOllamaRunningAsync())
-                        {
-                            var aiTags = await AiHelper.AutoTagTextAsync(ocrResult.Text);
-                            foreach (var tag in aiTags)
-                            {
-                                tags.Add(tag.Trim().ToLower());
-                            }
-                        }
-
-                        foreach (var tag in tags)
-                        {
-                            DatabaseHelper.AddTagToNote(noteId, tag);
-                        }
+                        tags.Add(tag.Trim().ToLower());
                     }
-                    else
-                    {
-                        noteId = DatabaseHelper.CreateNote("Clipboard Text", item.FullText ?? "", null, null, "yellow");
+                }
 
-                        var tags = new HashSet<string>();
-                        if (item.FullText != null)
-                        {
-                            if (item.FullText.Contains("http://") || item.FullText.Contains("https://")) tags.Add("link");
-                            if (item.FullText.Contains("@")) tags.Add("contact");
-
-                            if (await AiHelper.IsOllamaRunningAsync())
-                            {
-                                var aiTags = await AiHelper.AutoTagTextAsync(item.FullText);
-                                foreach (var tag in aiTags)
-                                {
-                                    tags.Add(tag.Trim().ToLower());
-                                }
-                            }
-                        }
-
-                        foreach (var tag in tags)
-                        {
-                            DatabaseHelper.AddTagToNote(noteId, tag);
-                        }
-                    }
-
-                    RefreshNotesList();
-                    RefreshTagsFilter();
-                    NotesTabButton_Click(this, new RoutedEventArgs());
+                foreach (var tag in tags)
+                {
+                    DatabaseHelper.AddTagToNote(noteId, tag);
                 }
             }
+            else
+            {
+                noteId = DatabaseHelper.CreateNote("Clipboard Text", item.FullText ?? "", null, null, "yellow");
+
+                var tags = new HashSet<string>();
+                if (item.FullText != null)
+                {
+                    if (item.FullText.Contains("http://") || item.FullText.Contains("https://")) tags.Add("link");
+                    if (item.FullText.Contains("@")) tags.Add("contact");
+
+                    if (await AiHelper.IsOllamaRunningAsync())
+                    {
+                        var aiTags = await AiHelper.AutoTagTextAsync(item.FullText);
+                        foreach (var tag in aiTags)
+                        {
+                            tags.Add(tag.Trim().ToLower());
+                        }
+                    }
+                }
+
+                foreach (var tag in tags)
+                {
+                    DatabaseHelper.AddTagToNote(noteId, tag);
+                }
+            }
+
+            RefreshNotesList();
+            RefreshTagsFilter();
+            return noteId;
         }
 
         #endregion
@@ -1724,11 +1783,27 @@ namespace StickyNotes__
         public string Title { get; set; } = "";
         public string Color { get; set; } = "yellow";
         public string Snippet { get; set; } = "";
+        public string FullPlainText { get; set; } = "";
         public string? ImagePath { get; set; }
         public List<string> Tags { get; set; } = new List<string>();
         public string Category { get; set; } = "General";
         public bool IsFavorite { get; set; }
+        public DateTime UpdatedAt { get; set; }
         public List<QuickOpenItem> QuickOpenItems { get; set; } = new List<QuickOpenItem>();
+
+        public string DateText
+        {
+            get
+            {
+                var span = DateTime.Now - UpdatedAt;
+                if (span.TotalMinutes < 1) return "Just now";
+                if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+                if (span.TotalHours < 24 && UpdatedAt.Date == DateTime.Now.Date) return $"{(int)span.TotalHours}h ago";
+                if (UpdatedAt.Date == DateTime.Now.Date.AddDays(-1)) return "Yesterday";
+                if (UpdatedAt.Year == DateTime.Now.Year) return UpdatedAt.ToString("MMM d");
+                return UpdatedAt.ToString("MMM d, yyyy");
+            }
+        }
 
         public string FavoriteIcon => IsFavorite ? "★" : "☆";
         public Brush FavoriteBrush => IsFavorite ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xff, 0xc1, 0x07)) : new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x80, 0xff, 0xff, 0xff));
@@ -1752,8 +1827,8 @@ namespace StickyNotes__
         public Visibility ImageVisibility => (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath)) ? Visibility.Visible : Visibility.Collapsed;
 
         // --- Task Checklist Properties ---
-        public int TotalTasks => CountOccurrences(Snippet, "- [ ]") + CountOccurrences(Snippet, "- [x]") + CountOccurrences(Snippet, "* [ ]") + CountOccurrences(Snippet, "* [x]");
-        public int CompletedTasks => CountOccurrences(Snippet, "- [x]") + CountOccurrences(Snippet, "* [x]");
+        public int TotalTasks => CountOccurrences(FullPlainText, "- [ ]") + CountOccurrences(FullPlainText, "- [x]") + CountOccurrences(FullPlainText, "* [ ]") + CountOccurrences(FullPlainText, "* [x]");
+        public int CompletedTasks => CountOccurrences(FullPlainText, "- [x]") + CountOccurrences(FullPlainText, "* [x]");
 
         public double TaskProgressPercentage => TotalTasks > 0 ? ((double)CompletedTasks / TotalTasks) * 100 : 0;
         public string TaskStatsText => $"{CompletedTasks} of {TotalTasks} tasks";

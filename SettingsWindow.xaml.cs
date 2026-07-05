@@ -153,6 +153,26 @@ namespace StickyNotes__
             }
         }
 
+        private async void AutoOrganizeSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var main = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
+            if (main == null) return;
+
+            AutoOrganizeSettingsButton.IsEnabled = false;
+            string originalContent = AutoOrganizeSettingsButton.Content.ToString() ?? "🪄 Auto Organize Notes (AI)";
+            AutoOrganizeSettingsButton.Content = "🪄 Organizing...";
+
+            try
+            {
+                await main.RunAutoOrganizeAsync();
+            }
+            finally
+            {
+                AutoOrganizeSettingsButton.IsEnabled = true;
+                AutoOrganizeSettingsButton.Content = originalContent;
+            }
+        }
+
         private void BackupNowButton_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new Microsoft.Win32.SaveFileDialog

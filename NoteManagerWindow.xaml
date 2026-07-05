@@ -1,0 +1,256 @@
+<Window x:Class="StickyNotes__.NoteManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Note Manager" Height="760" Width="1180" MinHeight="480" MinWidth="820"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="CanResizeWithGrip"
+        WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded" Closing="Window_Closing">
+
+    <Border x:Name="WindowBorder" Background="#F2141414" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="10">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title Bar -->
+            <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="📓  Note Manager" Foreground="#ffffff" FontSize="14" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Margin="16,0,0,0"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Button Content="—" Click="MinimizeButton_Click" ToolTip="Minimize"
+                            Width="30" Height="26" Background="Transparent" BorderThickness="0"
+                            Foreground="#ffffff" FontSize="11" Cursor="Hand"/>
+                    <Button x:Name="MaximizeIcon" Content="🗖" Click="MaximizeButton_Click" ToolTip="Maximize"
+                            Width="30" Height="26" Background="Transparent" BorderThickness="0"
+                            Foreground="#ffffff" FontSize="11" Cursor="Hand"/>
+                    <Button Content="✕" Click="CloseButton_Click" ToolTip="Close"
+                            Width="30" Height="26" Background="Transparent" BorderThickness="0"
+                            Foreground="#ffffff" FontSize="11" Cursor="Hand"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Body -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="290"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Colored Category Tabs (OneNote-style section list) -->
+                <Border Grid.Column="0" Background="#14ffffff">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="CategoryTabsPanel" Margin="0,10,0,10"/>
+                        </ScrollViewer>
+
+                        <!-- Pinned at the bottom of the category list, left-aligned like an action item rather than a filter tab -->
+                        <Border Grid.Row="1" BorderBrush="#20ffffff" BorderThickness="0,1,0,0">
+                            <Button x:Name="AddCategoryButton" Click="AddCategoryButton_Click" ToolTip="Add a new category"
+                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                    HorizontalContentAlignment="Left" Padding="14,10" Height="40">
+                                <TextBlock Text="+ New Category" Foreground="#99ffffff" FontSize="11" FontStyle="Italic"/>
+                            </Button>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Notes List -->
+                <Border Grid.Column="1" Background="#0Affffff" BorderBrush="#20ffffff" BorderThickness="0,0,1,0">
+                    <Grid Margin="14,14,14,10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock x:Name="CategoryHeaderText" Grid.Row="0" Text="All Notes" FontSize="17" FontWeight="Bold"
+                                   Foreground="#ffffff" Margin="0,0,0,10" TextTrimming="CharacterEllipsis"/>
+
+                        <TextBox x:Name="ManagerSearchBox" Grid.Row="1" TextChanged="ManagerSearchBox_TextChanged"
+                                 Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="0" CaretBrush="White" Margin="0,0,0,10">
+                            <TextBox.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6"/>
+                                </Style>
+                            </TextBox.Resources>
+                        </TextBox>
+
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="NotesListPanel"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Editor Pane -->
+                <Grid Grid.Column="2" Margin="24,18,24,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header: title + actions -->
+                        <RowDefinition Height="Auto"/> <!-- Toolbar -->
+                        <RowDefinition Height="*"/>    <!-- Editor -->
+                        <RowDefinition Height="Auto"/> <!-- Footer -->
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="EmptyStateText" Grid.Row="0" Grid.RowSpan="4" Text="Select a note on the left to view or edit it here."
+                               Foreground="#55ffffff" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                    <!-- Header -->
+                    <Grid x:Name="EditorHeaderGrid" Grid.Row="0" Margin="0,0,0,10" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="EditorTitleText" Grid.Column="0" Text="Sticky Note" FontSize="18" FontWeight="Bold"
+                                   Foreground="#ffffff" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="EditorFavoriteButton" Click="EditorFavoriteButton_Click" ToolTip="Mark as favorite"
+                                    Background="Transparent" BorderThickness="0" Foreground="#ffc107" FontSize="16"
+                                    Width="28" Height="28" Cursor="Hand" Content="☆"/>
+                            <Button Content="↗ Open" Click="OpenInNoteWindowButton_Click" ToolTip="Open in a full note window"
+                                    Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" FontSize="11"
+                                    Padding="8,4" Margin="8,0,0,0" Cursor="Hand">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="6"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                            <Button Content="Delete" Click="DeleteNoteButton_Click" ToolTip="Delete this note"
+                                    Background="#20ff5252" Foreground="#ff8080" BorderThickness="0" FontSize="11"
+                                    Padding="8,4" Margin="6,0,0,0" Cursor="Hand">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="6"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Formatting Toolbar (mirrors the full toolbar in the regular note editor) -->
+                    <Border x:Name="EditorToolbar" Grid.Row="1" Background="#1a1a1a" BorderBrush="#2a2a2a" BorderThickness="1" CornerRadius="6" Padding="5,3" Margin="0,0,0,8" Visibility="Collapsed">
+                        <WrapPanel Orientation="Horizontal">
+                            <!-- Text Style Group -->
+                            <Button Width="26" Height="24" Click="FormatBold_Click" ToolTip="Bold (Ctrl+B)" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="B" FontWeight="Bold" FontSize="12" FontFamily="Segoe UI"/>
+                            </Button>
+                            <Button Width="26" Height="24" Click="FormatItalic_Click" ToolTip="Italic (Ctrl+I)" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="I" FontStyle="Italic" FontSize="12" FontFamily="Segoe UI"/>
+                            </Button>
+                            <Button Width="26" Height="24" Click="FormatUnderline_Click" ToolTip="Underline (Ctrl+U)" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="U" TextDecorations="Underline" FontSize="12" FontFamily="Segoe UI"/>
+                            </Button>
+                            <Button Width="26" Height="24" Click="FormatStrikethrough_Click" ToolTip="Strikethrough" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="S" TextDecorations="Strikethrough" FontSize="12" FontFamily="Segoe UI"/>
+                            </Button>
+                            <Button Width="26" Height="24" Click="FormatHighlight_Click" ToolTip="Highlight" Background="Transparent" BorderThickness="0" Foreground="#FFD700" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x2590;" FontSize="13"/>
+                            </Button>
+                            <Button Width="26" Height="24" Click="FormatTextColor_Click" ToolTip="Text Color" Background="Transparent" BorderThickness="0" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="A" FontWeight="Bold" FontSize="12" FontFamily="Segoe UI" Foreground="#ff6b6b"/>
+                            </Button>
+
+                            <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                            <!-- Font Size Group -->
+                            <Button Width="24" Height="24" Click="FormatDecreaseFontSize_Click" ToolTip="Decrease Font Size" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="A-" FontSize="10" FontFamily="Segoe UI"/>
+                            </Button>
+                            <Button Width="24" Height="24" Click="FormatIncreaseFontSize_Click" ToolTip="Increase Font Size" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="A+" FontSize="10" FontFamily="Segoe UI"/>
+                            </Button>
+
+                            <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                            <!-- Block Style Group -->
+                            <Button Width="26" Height="24" Click="FormatHeading1_Click" ToolTip="Heading 1" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="H1" FontWeight="Bold" FontSize="10" FontFamily="Segoe UI"/>
+                            </Button>
+                            <Button Width="26" Height="24" Click="FormatHeading2_Click" ToolTip="Heading 2" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="H2" FontWeight="Bold" FontSize="10" FontFamily="Segoe UI"/>
+                            </Button>
+                            <Button Width="28" Height="24" Click="FormatBlockquote_Click" ToolTip="Quote Block" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x201C;" FontSize="18" FontWeight="Bold" FontFamily="Georgia"/>
+                            </Button>
+                            <Button Width="34" Height="24" Click="FormatCodeBlock_Click" ToolTip="Code Block" Background="Transparent" BorderThickness="0" Foreground="#a8ff78" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&lt;/&gt;" FontFamily="Consolas" FontSize="10"/>
+                            </Button>
+
+                            <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                            <!-- List Group -->
+                            <Button Width="28" Height="24" Click="FormatBullets_Click" ToolTip="Bullet List" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x2261;" FontSize="15" Margin="0,-1,0,0"/>
+                            </Button>
+                            <Button Width="28" Height="24" Click="FormatNumberedList_Click" ToolTip="Numbered List" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="1." FontSize="11" FontFamily="Segoe UI" FontWeight="Bold"/>
+                            </Button>
+                            <Button Width="24" Height="24" Click="FormatOutdent_Click" ToolTip="Decrease Indent" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x21E4;" FontSize="12"/>
+                            </Button>
+                            <Button Width="24" Height="24" Click="FormatIndent_Click" ToolTip="Increase Indent" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x21E5;" FontSize="12"/>
+                            </Button>
+
+                            <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                            <!-- Insert Group -->
+                            <Button Width="28" Height="24" Click="FormatChecklist_Click" ToolTip="Insert Checkbox / Task item" Background="Transparent" BorderThickness="0" Foreground="#88ff88" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x2611;" FontSize="13"/>
+                            </Button>
+                            <Button Width="28" Height="24" Click="InsertHyperlink_Click" ToolTip="Insert Hyperlink" Background="Transparent" BorderThickness="0" Foreground="#4db8ff" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x1F517;" FontSize="11"/>
+                            </Button>
+                            <Button Width="28" Height="24" Click="InsertDivider_Click" ToolTip="Insert Divider" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x2015;" FontSize="14"/>
+                            </Button>
+
+                            <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                            <!-- Clear Formatting -->
+                            <Button Width="28" Height="24" Click="FormatClear_Click" ToolTip="Clear Formatting" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                                <TextBlock Text="&#x2715;A" FontSize="10" FontFamily="Segoe UI"/>
+                            </Button>
+                        </WrapPanel>
+                    </Border>
+
+                    <RichTextBox x:Name="ManagerRichTextBox" Grid.Row="2" Background="Transparent" BorderThickness="0"
+                                 Foreground="#ffffff" CaretBrush="White" FontFamily="Segoe UI Variable Text, Segoe UI, sans-serif"
+                                 FontSize="14" Visibility="Collapsed"
+                                 TextChanged="ManagerRichTextBox_TextChanged"
+                                 PreviewMouseLeftButtonDown="ManagerRichTextBox_PreviewMouseLeftButtonDown"
+                                 AcceptsReturn="True" AcceptsTab="True"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+
+                    <!-- Footer -->
+                    <Grid x:Name="EditorFooterGrid" Grid.Row="3" Margin="0,8,0,0" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="EditorCategoryCombo" Grid.Column="0" SelectionChanged="EditorCategoryCombo_SelectionChanged"
+                                  MinWidth="110" Padding="6,3" FontSize="10.5" Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" Cursor="Hand"/>
+                        <TextBlock x:Name="EditorTagsText" Grid.Column="1" Text="No tags" Foreground="#88ffffff" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="ManagerWordCountText" Grid.Column="2" Text="" Foreground="#55ffffff" FontSize="10" VerticalAlignment="Center"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

@@ -53,6 +53,11 @@
                             </Style>
                         </Button.Resources>
                     </Button>
+
+                    <TextBlock Text="Have the AI sort all your notes into categories and tags in one pass. Useful occasionally, not something you'll run often."
+                               Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,15,0,10"/>
+                    <Button x:Name="AutoOrganizeSettingsButton" Content="🪄 Auto Organize Notes (AI)" Click="AutoOrganizeSettingsButton_Click"
+                            Height="32" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0"/>
                 </StackPanel>
 
                 <!-- Ollama AI Splitter (Row 1) -->
