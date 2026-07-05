@@ -40,6 +40,12 @@ namespace StickyNotes__
         [DllImport("shell32.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern IntPtr SHAppBarMessage(int dwMessage, ref APPBARDATA pData);
 
+        // Increments every time the clipboard's content actually changes -- the only reliable way
+        // to detect "is this really new" for images, since Clipboard.GetImage() hands back a fresh
+        // BitmapSource instance on every call even when the underlying content hasn't changed.
+        [DllImport("user32.dll")]
+        public static extern int GetClipboardSequenceNumber();
+
         // Window styling & position
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);

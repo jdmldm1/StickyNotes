@@ -34,8 +34,7 @@ namespace StickyNotes__
         // Clipboard History fields
         private System.Windows.Threading.DispatcherTimer? _clipboardTimer;
         private readonly List<ClipboardHistoryItem> _clipboardHistory = new List<ClipboardHistoryItem>();
-        private string _lastClipboardText = "";
-        private BitmapSource? _lastClipboardImage = null;
+        private int _lastClipboardSequence = -1;
 
         // Active floating note windows
         private readonly Dictionary<int, NoteWindow> _openNoteWindows = new Dictionary<int, NoteWindow>();
@@ -1128,14 +1127,20 @@ namespace StickyNotes__
         {
             try
             {
+                // The clipboard's sequence number only increments when its content actually
+                // changes, so this is the one reliable gate for "is this a new copy" -- comparing
+                // GetImage() results directly doesn't work, since it returns a fresh BitmapSource
+                // instance every call even when nothing changed, causing the same image to be
+                // re-added once per poll tick for as long as it stayed on the clipboard.
+                int currentSequence = Win32Helper.GetClipboardSequenceNumber();
+                if (currentSequence == _lastClipboardSequence) return;
+                _lastClipboardSequence = currentSequence;
+
                 if (Clipboard.ContainsText())
                 {
                     string currentText = Clipboard.GetText().Trim();
-                    if (!string.IsNullOrEmpty(currentText) && currentText != _lastClipboardText)
+                    if (!string.IsNullOrEmpty(currentText))
                     {
-                        _lastClipboardText = currentText;
-                        _lastClipboardImage = null; // Reset image tracking to allow switching back/forth
-
                         AddClipboardItem(new ClipboardHistoryItem
                         {
                             Snippet = currentText.Length > 60 ? currentText.Substring(0, 57) + "..." : currentText,
@@ -1146,11 +1151,8 @@ namespace StickyNotes__
                 else if (Clipboard.ContainsImage())
                 {
                     var currentImage = Clipboard.GetImage();
-                    if (currentImage != null && (currentImage != _lastClipboardImage))
+                    if (currentImage != null)
                     {
-                        _lastClipboardImage = currentImage;
-                        _lastClipboardText = "";
-
                         AddClipboardItem(new ClipboardHistoryItem
                         {
                             Snippet = "Clipboard Image",
