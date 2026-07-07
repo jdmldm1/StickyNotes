@@ -113,6 +113,7 @@ namespace StickyNotes__
         public const int HotkeyMeetingNote  = 9006;
         public const int HotkeyQuickCapture = 9007;
         public const int HotkeyGraph        = 9008; // Win+Alt+G — Tag Mind Graph
+        public const int HotkeyToggleSidebar = 9009; // Win+Alt+Z — Show/Hide Sidebar
         
         public static void EnableMica(IntPtr hwnd, bool darkMode)
         {

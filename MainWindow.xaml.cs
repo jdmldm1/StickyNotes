@@ -230,6 +230,7 @@ namespace StickyNotes__
             Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyMeetingNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // 0x4D = 'M'
             Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyQuickCapture, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51); // 0x51 = 'Q'
             Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyGraph, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x47); // 0x47 = 'G'
+            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyToggleSidebar, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x5A); // 0x5A = 'Z'
 
             // Note: intentionally NOT enabling the Mica backdrop here. Mica composites its own
             // blurred/tinted wallpaper sample underneath the window, which fights with the sidebar
@@ -288,6 +289,11 @@ namespace StickyNotes__
                 else if (id == Win32Helper.HotkeyGraph)
                 {
                     GraphButton_Click(this, new RoutedEventArgs());
+                    handled = true;
+                }
+                else if (id == Win32Helper.HotkeyToggleSidebar)
+                {
+                    ToggleSidebar();
                     handled = true;
                 }
             }
@@ -500,6 +506,18 @@ namespace StickyNotes__
                 _quickCaptureWnd.Show();
                 _quickCaptureWnd.Activate();
                 _quickCaptureWnd.FocusCapture();
+            }
+        }
+
+        public void ToggleSidebar()
+        {
+            if (this.Visibility == Visibility.Visible && this.WindowState != WindowState.Minimized)
+            {
+                this.WindowState = WindowState.Minimized;
+            }
+            else
+            {
+                RestoreFromTray();
             }
         }
 
