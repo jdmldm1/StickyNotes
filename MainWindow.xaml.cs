@@ -224,16 +224,9 @@ namespace StickyNotes__
             // Snapping Right (AppBar)
             RegisterAppBar();
 
-            // Register Hotkeys
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyNewNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E); // 0x4E = 'N'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyScreenshot, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53); // 0x53 = 'S'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeySpotlight, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20); // 0x20 = Space
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyBrowserTabs, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54); // 0x54 = 'T'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeySaveFiles, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46); // 0x46 = 'F'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyMeetingNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // 0x4D = 'M'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyQuickCapture, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51); // 0x51 = 'Q'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyGraph, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x47); // 0x47 = 'G'
-            Win32Helper.RegisterHotKey(wndHelper.Handle, Win32Helper.HotkeyToggleSidebar, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x5A); // 0x5A = 'Z'
+            // Register Hotkeys on thread queue
+            ComponentDispatcher.ThreadFilterMessage += ComponentDispatcher_ThreadFilterMessage;
+            RegisterAllHotKeys();
 
             // Note: intentionally NOT enabling the Mica backdrop here. Mica composites its own
             // blurred/tinted wallpaper sample underneath the window, which fights with the sidebar
@@ -248,12 +241,51 @@ namespace StickyNotes__
 
         private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            const int WM_HOTKEY = 0x0312;
             const int WM_ACTIVATE = 0x0006;
 
-            if (msg == WM_HOTKEY)
+            if (msg == WM_ACTIVATE)
             {
-                int id = wParam.ToInt32();
+                if (_isAppBarRegistered)
+                {
+                    SetAppBarPosition();
+                }
+            }
+
+            return IntPtr.Zero;
+        }
+
+        private void RegisterAllHotKeys()
+        {
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyNewNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E); // N
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyScreenshot, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53); // S
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeySpotlight, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20); // Space
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyBrowserTabs, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54); // T
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeySaveFiles, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46); // F
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyMeetingNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // M
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyQuickCapture, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51); // Q
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyGraph, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x47); // G
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyToggleSidebar, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x5A); // Z
+        }
+
+        private void UnregisterAllHotKeys()
+        {
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeyNewNote);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeyScreenshot);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeySpotlight);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeyBrowserTabs);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeySaveFiles);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeyMeetingNote);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeyQuickCapture);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeyGraph);
+            Win32Helper.UnregisterHotKey(IntPtr.Zero, Win32Helper.HotkeyToggleSidebar);
+        }
+
+        private void ComponentDispatcher_ThreadFilterMessage(ref MSG msg, ref bool handled)
+        {
+            const int WM_HOTKEY = 0x0312;
+            if (msg.message == WM_HOTKEY)
+            {
+                int id = msg.wParam.ToInt32();
                 if (id == Win32Helper.HotkeyNewNote)
                 {
                     CreateNewNote();
@@ -300,15 +332,6 @@ namespace StickyNotes__
                     handled = true;
                 }
             }
-            else if (msg == WM_ACTIVATE)
-            {
-                if (_isAppBarRegistered)
-                {
-                    SetAppBarPosition();
-                }
-            }
-
-            return IntPtr.Zero;
         }
 
         #region AppBar Implementation
@@ -532,9 +555,10 @@ namespace StickyNotes__
 
         public void ToggleSidebar()
         {
-            if (this.Visibility == Visibility.Visible && this.WindowState != WindowState.Minimized)
+            if (this.Visibility == Visibility.Visible)
             {
-                this.WindowState = WindowState.Minimized;
+                UnregisterAppBar();
+                this.Hide();
             }
             else
             {
@@ -1827,15 +1851,8 @@ namespace StickyNotes__
             UnregisterAppBar();
 
             // Unregister hotkeys
-            var wndHelper = new WindowInteropHelper(this);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyNewNote);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyScreenshot);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeySpotlight);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyBrowserTabs);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeySaveFiles);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyMeetingNote);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyQuickCapture);
-            Win32Helper.UnregisterHotKey(wndHelper.Handle, Win32Helper.HotkeyGraph);
+            ComponentDispatcher.ThreadFilterMessage -= ComponentDispatcher_ThreadFilterMessage;
+            UnregisterAllHotKeys();
 
             // Stop clipboard timer
             _clipboardTimer?.Stop();
