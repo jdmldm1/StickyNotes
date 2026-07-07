@@ -401,10 +401,9 @@ namespace StickyNotes__
                     return;
                 }
 
-                // 4. Pull Llama 3.2:1b via Ollama API
-                SetupStatusTextBlock.Text = "Downloading Llama 3.2:1b model. Please wait, this takes some time...";
+                SetupStatusTextBlock.Text = "Downloading qwen2.5-coder:3b model. Please wait, this takes some time...";
 
-                string targetModel = "llama3.2:1b";
+                string targetModel = "qwen2.5-coder:3b";
                 bool pullSuccess = false;
                 using (var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
                 {

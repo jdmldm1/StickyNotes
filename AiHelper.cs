@@ -53,13 +53,13 @@ namespace StickyNotes__
                         var root = doc.RootElement;
                         if (root.TryGetProperty("models", out JsonElement modelsEl) && modelsEl.GetArrayLength() > 0)
                         {
-                            return modelsEl[0].GetProperty("name").GetString() ?? "llama3.2:1b";
+                            return modelsEl[0].GetProperty("name").GetString() ?? "qwen2.5-coder:3b";
                         }
                     }
                 }
             }
             catch {}
-            return "llama3.2:1b";
+            return "qwen2.5-coder:3b";
         }
 
         public static async Task<string> GenerateTextAsync(string prompt)
