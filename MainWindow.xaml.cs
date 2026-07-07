@@ -371,42 +371,62 @@ namespace StickyNotes__
             }
         }
 
+        private (double dpiX, double dpiY) GetDpiFactors()
+        {
+            double dpiX = 1.0;
+            double dpiY = 1.0;
+            var source = PresentationSource.FromVisual(this);
+            if (source != null && source.CompositionTarget != null)
+            {
+                dpiX = source.CompositionTarget.TransformToDevice.M11;
+                dpiY = source.CompositionTarget.TransformToDevice.M22;
+            }
+            return (dpiX, dpiY);
+        }
+
         private void SetAppBarPosition()
         {
             if (!_isAppBarRegistered) return;
 
             var wndHelper = new WindowInteropHelper(this);
+            var (dpiX, dpiY) = GetDpiFactors();
             
-            // Query screen monitor metrics
-            int screenWidth = (int)SystemParameters.PrimaryScreenWidth;
-            int screenHeight = (int)SystemParameters.PrimaryScreenHeight;
+            // Query screen monitor metrics in logical pixels
+            double screenWidth = SystemParameters.PrimaryScreenWidth;
+            double screenHeight = SystemParameters.PrimaryScreenHeight;
 
-            _appBarData.rc.Left = screenWidth - 350;
-            _appBarData.rc.Top = 0;
-            _appBarData.rc.Right = screenWidth;
-            _appBarData.rc.Bottom = screenHeight;
+            // Convert to physical pixels for Win32 AppBar registration
+            int physicalLeft = (int)((screenWidth - 350) * dpiX);
+            int physicalTop = 0;
+            int physicalRight = (int)(screenWidth * dpiX);
+            int physicalBottom = (int)(screenHeight * dpiY);
+
+            _appBarData.rc.Left = physicalLeft;
+            _appBarData.rc.Top = physicalTop;
+            _appBarData.rc.Right = physicalRight;
+            _appBarData.rc.Bottom = physicalBottom;
 
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_QUERYPOS, ref _appBarData);
             
-            // Re-assert desired bounds to prevent the OS from shifting left on multiple calls
-            _appBarData.rc.Left = screenWidth - 350;
-            _appBarData.rc.Top = 0;
-            _appBarData.rc.Right = screenWidth;
-            _appBarData.rc.Bottom = screenHeight;
+            // Re-assert desired physical bounds to prevent the OS from shifting left on multiple calls
+            _appBarData.rc.Left = physicalLeft;
+            _appBarData.rc.Top = physicalTop;
+            _appBarData.rc.Right = physicalRight;
+            _appBarData.rc.Bottom = physicalBottom;
 
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_SETPOS, ref _appBarData);
 
-            // Sync WPF window properties so WPF layout engine is in sync with Win32
+            // Sync WPF window properties so WPF layout engine is in sync in logical pixels
             this.Left = screenWidth - 350;
             this.Top = 0;
             this.Width = 350;
             this.Height = screenHeight;
 
-            // Re-assert desired bounds one final time prior to setting window position
-            _appBarData.rc.Left = screenWidth - 350;
-            _appBarData.rc.Top = 0;
-            _appBarData.rc.Right = screenWidth;
-            _appBarData.rc.Bottom = screenHeight;
+            // Re-assert desired physical bounds one final time prior to setting window position
+            _appBarData.rc.Left = physicalLeft;
+            _appBarData.rc.Top = physicalTop;
+            _appBarData.rc.Right = physicalRight;
+            _appBarData.rc.Bottom = physicalBottom;
 
             Win32Helper.SetWindowPos(
                 wndHelper.Handle,
