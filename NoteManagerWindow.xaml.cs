@@ -85,13 +85,17 @@ namespace StickyNotes__
         private static string ColorForCategory(string category)
         {
             if (string.IsNullOrEmpty(category) || category == "General") return "#5a5a5a";
+
+            string? customHex = DatabaseHelper.GetCategoryColor(category);
+            if (!string.IsNullOrEmpty(customHex)) return customHex;
+
             int hash = 0;
             foreach (char c in category) hash = hash * 31 + c;
             int idx = Math.Abs(hash) % TabAccentColors.Length;
             return TabAccentColors[idx];
         }
 
-        private void RefreshCategoryTabs()
+        public void RefreshCategoryTabs()
         {
             CategoryTabsPanel.Children.Clear();
 
@@ -174,6 +178,15 @@ namespace StickyNotes__
             grid.Children.Add(accentBar);
             grid.Children.Add(text);
             border.Child = grid;
+
+            if (categoryKey != null && categoryKey != "__favorites__")
+            {
+                border.ContextMenu = _owner.CreateCategoryContextMenu(categoryKey, () =>
+                {
+                    RefreshCategoryTabs();
+                    _owner.RefreshNotesList();
+                });
+            }
 
             border.MouseLeftButtonUp += (s, e) => SelectCategory(categoryKey);
 

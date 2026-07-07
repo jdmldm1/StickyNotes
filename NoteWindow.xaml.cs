@@ -75,6 +75,8 @@ namespace StickyNotes__
             LoadNoteData();
 
             CheckOllamaStatus();
+
+            CommandManager.AddPreviewExecutedHandler(NoteRichTextBox, OnPreviewExecuted);
         }
 
         private async void CheckOllamaStatus()
@@ -84,6 +86,7 @@ namespace StickyNotes__
                 if (await AiHelper.IsOllamaRunningAsync())
                 {
                     AiFormatButton.Visibility = Visibility.Visible;
+                    AiSummaryButton.Visibility = Visibility.Visible;
                     AiChatToggleButton.Visibility = Visibility.Visible;
                 }
             }
@@ -101,6 +104,7 @@ namespace StickyNotes__
             if (_note == null) return;
 
             // Title
+            NoteTitleTextBox.Text = _note.Title ?? "";
             TitleTextBlock.Text = string.IsNullOrEmpty(_note.Title) ? "Sticky Note" : _note.Title;
 
             // Geometry -- size and position are applied independently, since some notes (e.g.
@@ -147,6 +151,22 @@ namespace StickyNotes__
                     NoteRichTextBox.Document.Blocks.Clear();
                     NoteRichTextBox.Document.Blocks.Add(new Paragraph(new Run(_note.Content)));
                 }
+
+                // Legacy title migration: strip the first paragraph if it matches _note.Title
+                if (!string.IsNullOrEmpty(_note.Title) && NoteRichTextBox.Document.Blocks.Count > 0)
+                {
+                    var firstBlock = NoteRichTextBox.Document.Blocks.FirstBlock as Paragraph;
+                    if (firstBlock != null)
+                    {
+                        string firstBlockText = new TextRange(firstBlock.ContentStart, firstBlock.ContentEnd).Text.Trim();
+                        bool matches = firstBlockText == _note.Title || 
+                                       (_note.Title.EndsWith("...") && _note.Title.Length >= 4 && firstBlockText.StartsWith(_note.Title.Substring(0, _note.Title.Length - 3)));
+                        if (matches)
+                        {
+                            NoteRichTextBox.Document.Blocks.Remove(firstBlock);
+                        }
+                    }
+                }
             }
 
             // Event handlers (hyperlink navigation, checkbox strikethrough) are not
@@ -154,6 +174,33 @@ namespace StickyNotes__
             RewireInteractiveElements();
 
             TextRange initRange = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
+
+            // Legacy tag migration: append tags as #hashtags to the editor if not present
+            var dbTags = DatabaseHelper.GetNoteTags(_noteId);
+            if (dbTags.Count > 0)
+            {
+                string bodyText = initRange.Text;
+                StringBuilder sb = new StringBuilder();
+                bool addedAny = false;
+                foreach (var tag in dbTags)
+                {
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(bodyText, $@"\B#{System.Text.RegularExpressions.Regex.Escape(tag)}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        sb.Append(" #" + tag);
+                        addedAny = true;
+                    }
+                }
+                if (addedAny)
+                {
+                    TextRange endRange = new TextRange(NoteRichTextBox.Document.ContentEnd, NoteRichTextBox.Document.ContentEnd);
+                    endRange.Text = sb.ToString();
+                    SaveNoteContent();
+                    
+                    // Re-read initial text range for history tracking after edit
+                    initRange = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
+                }
+            }
+
             _lastHistoryContent = _note.Content ?? "";
             _lastHistoryPlain = initRange.Text.Trim();
             _lastHistoryTime = DateTime.Now;
@@ -179,7 +226,19 @@ namespace StickyNotes__
             HeaderGrid.Background = profile.DarkHeader;
             
             TitleTextBlock.Foreground = profile.DarkText;
+            NoteTitleTextBox.Foreground = profile.DarkText;
+            NoteTitleTextBox.CaretBrush = profile.DarkText;
             NoteRichTextBox.Foreground = profile.DarkText;
+
+            // Apply dynamic opacity color to the divider
+            if (profile.DarkText is SolidColorBrush scb)
+            {
+                TitleDivider.Background = new SolidColorBrush(Color.FromArgb(50, scb.Color.R, scb.Color.G, scb.Color.B));
+            }
+            else
+            {
+                TitleDivider.Background = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255));
+            }
 
             // Enable Mica transparent effect via DWM helper
             var wndHelper = new WindowInteropHelper(this);
@@ -440,9 +499,15 @@ namespace StickyNotes__
             var dlg = new InputDialog("Enter tag name:", "Add Tag");
             if (dlg.ShowDialog() == true && !string.IsNullOrEmpty(dlg.Answer))
             {
-                DatabaseHelper.AddTagToNote(_noteId, dlg.Answer);
-                UpdateTagsDisplay();
-                NotifyNotesChanged();
+                string tag = dlg.Answer.Trim().ToLower();
+                if (!string.IsNullOrEmpty(tag))
+                {
+                    TextRange range = new TextRange(NoteRichTextBox.Document.ContentEnd, NoteRichTextBox.Document.ContentEnd);
+                    range.Text = " #" + tag;
+                    
+                    // Direct focus and trigger text changed/save
+                    NoteRichTextBox.Focus();
+                }
             }
         }
 
@@ -587,13 +652,13 @@ namespace StickyNotes__
             }
         }
 
-        private void AttachFiles(IEnumerable<string> filePaths)
+        private async void AttachFiles(IEnumerable<string> filePaths)
         {
             foreach (var path in filePaths)
             {
                 try
                 {
-                    DatabaseHelper.AddAttachment(_noteId, path);
+                    await DatabaseHelper.AddAttachmentAsync(_noteId, path);
                 }
                 catch (Exception ex)
                 {
@@ -643,6 +708,21 @@ namespace StickyNotes__
 
         #endregion
 
+        private void NoteTitleTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_isLoaded)
+            {
+                _saveTimer.Stop();
+                _saveTimer.Start();
+            }
+        }
+
+        public void FocusTitle()
+        {
+            NoteTitleTextBox.Focus();
+            NoteTitleTextBox.SelectAll();
+        }
+
         private void NoteRichTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_isLoaded)
@@ -681,32 +761,60 @@ namespace StickyNotes__
 
         private void SaveNoteContent()
         {
+            if (_note == null) return;
+
+            string title = NoteTitleTextBox.Text.Trim();
+            TitleTextBlock.Text = string.IsNullOrEmpty(title) ? "Sticky Note" : title;
+
             // Get rich document content, encoded so embedded controls (checkboxes) round-trip
             TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
             string xamlText = NoteContentHelper.SaveRange(range);
-
-            // Extract plain text to parse first line as title
             string plainText = range.Text.Trim();
-            string title = "";
-            if (!string.IsNullOrEmpty(plainText))
-            {
-                int firstNewline = plainText.IndexOf('\n');
-                string firstLine = firstNewline > 0 ? plainText.Substring(0, firstNewline) : plainText;
-                
-                title = firstLine.Trim();
-                if (title.Length > 25)
-                {
-                    title = title.Substring(0, 25) + "...";
-                }
-            }
-
-            TitleTextBlock.Text = string.IsNullOrEmpty(title) ? "Sticky Note" : title;
 
             _note.Title = title;
             _note.Content = xamlText;
 
             DatabaseHelper.UpdateNote(_note);
             ParseAndSaveWikiLinks(plainText);
+
+            // Sync hashtags in text to database tags
+            var newTags = new HashSet<string>();
+            string fullText = title + " " + plainText;
+            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(fullText, @"\B#([a-zA-Z0-9_-]+)"))
+            {
+                string tag = match.Groups[1].Value.ToLower().Trim();
+                if (!string.IsNullOrEmpty(tag))
+                {
+                    newTags.Add(tag);
+                }
+            }
+
+            var oldTags = DatabaseHelper.GetNoteTags(_noteId);
+            bool tagsChanged = false;
+
+            foreach (var tag in newTags)
+            {
+                if (!oldTags.Contains(tag))
+                {
+                    DatabaseHelper.AddTagToNote(_noteId, tag);
+                    tagsChanged = true;
+                }
+            }
+
+            foreach (var tag in oldTags)
+            {
+                if (!newTags.Contains(tag))
+                {
+                    DatabaseHelper.RemoveTagFromNote(_noteId, tag);
+                    tagsChanged = true;
+                }
+            }
+
+            if (tagsChanged)
+            {
+                UpdateTagsDisplay();
+            }
+
             NotifyNotesChanged();
 
             // Save history entry if changed significantly
@@ -793,6 +901,60 @@ namespace StickyNotes__
             menu.Items.Add(actionItemsItem);
 
             menu.IsOpen = true;
+        }
+
+        private async void AiSummaryButton_Click(object sender, RoutedEventArgs e)
+        {
+            await InsertTldrSummaryAsync();
+        }
+
+        private async System.Threading.Tasks.Task InsertTldrSummaryAsync()
+        {
+            TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
+            string plainText = range.Text.Trim();
+            if (string.IsNullOrEmpty(plainText)) return;
+
+            var oldCursor = this.Cursor;
+            this.Cursor = Cursors.Wait;
+            try
+            {
+                string prompt = "Summarize the following text in 1-2 very short, concise sentences (acting as a TL;DR summary of the main points):\n\n" + plainText;
+                string aiOutput = await AiHelper.GenerateTextAsync(prompt);
+                if (!string.IsNullOrEmpty(aiOutput))
+                {
+                    var tldrParagraph = new Paragraph();
+                    tldrParagraph.Inlines.Add(new Run("TL;DR: ") { FontWeight = FontWeights.Bold });
+                    tldrParagraph.Inlines.Add(new Run(aiOutput) { FontStyle = FontStyles.Italic });
+                    tldrParagraph.Margin = new Thickness(0, 0, 0, 6);
+
+                    var divider = new Paragraph(new Run("――――――――――――――――――――"))
+                    {
+                        Foreground = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
+                        Margin = new Thickness(0, 0, 0, 10)
+                    };
+
+                    if (NoteRichTextBox.Document.Blocks.FirstBlock != null)
+                    {
+                        NoteRichTextBox.Document.Blocks.InsertBefore(NoteRichTextBox.Document.Blocks.FirstBlock, tldrParagraph);
+                        NoteRichTextBox.Document.Blocks.InsertAfter(tldrParagraph, divider);
+                    }
+                    else
+                    {
+                        NoteRichTextBox.Document.Blocks.Add(tldrParagraph);
+                        NoteRichTextBox.Document.Blocks.Add(divider);
+                    }
+
+                    SaveNoteContent();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("AI TL;DR generation failed: " + ex.Message, "AI Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                this.Cursor = oldCursor;
+            }
         }
 
         // Unlike the options above, this appends to the note rather than replacing it -- the
@@ -1910,6 +2072,68 @@ namespace StickyNotes__
         private void CloseBacklinks_Click(object sender, RoutedEventArgs e)
         {
             BacklinksPanel.Visibility = Visibility.Collapsed;
+        }
+
+        private void OnPreviewExecuted(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (e.Command == ApplicationCommands.Paste)
+            {
+                if (HandleClipboardPaste())
+                {
+                    e.Handled = true;
+                }
+            }
+        }
+
+        private bool HandleClipboardPaste()
+        {
+            try
+            {
+                // 1. Check for FileDrop (files copied from File Explorer)
+                if (Clipboard.ContainsFileDropList())
+                {
+                    var files = Clipboard.GetFileDropList();
+                    if (files != null && files.Count > 0)
+                    {
+                        var list = new List<string>();
+                        foreach (var f in files)
+                        {
+                            if (f != null) list.Add(f);
+                        }
+                        AttachFiles(list);
+                        return true;
+                    }
+                }
+
+                // 2. Check for Image (screenshot or copied image)
+                if (Clipboard.ContainsImage())
+                {
+                    var image = Clipboard.GetImage();
+                    if (image != null)
+                    {
+                        string tempFileName = $"PastedImage_{Guid.NewGuid():N}.png";
+                        string tempFilePath = Path.Combine(Path.GetTempPath(), tempFileName);
+
+                        using (var fileStream = new FileStream(tempFilePath, FileMode.Create))
+                        {
+                            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+                            encoder.Save(fileStream);
+                        }
+
+                        AttachFiles(new[] { tempFilePath });
+                        
+                        // Clean up the temp file after attachment copy is done
+                        try { File.Delete(tempFilePath); } catch {}
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to process paste: " + ex.Message, "Paste Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return false;
         }
     }
 }

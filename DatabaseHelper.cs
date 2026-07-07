@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Documents;
 using Microsoft.Data.Sqlite;
@@ -135,6 +136,7 @@ namespace StickyNotes__
         public string FileName { get; set; } = "";
         public string FilePath { get; set; } = "";
         public DateTime AddedAt { get; set; }
+        public string? OcrText { get; set; }
     }
 
     public static class DatabaseHelper
@@ -280,6 +282,25 @@ namespace StickyNotes__
                 try
                 {
                     cmd.CommandText = "ALTER TABLE notes ADD COLUMN is_template INTEGER DEFAULT 0;";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
+                try
+                {
+                    cmd.CommandText = "ALTER TABLE note_attachments ADD COLUMN ocr_text TEXT;";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
+                try
+                {
+                    cmd.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS category_colors (
+                            category TEXT PRIMARY KEY,
+                            color_hex TEXT NOT NULL
+                        );
+                    ";
                     cmd.ExecuteNonQuery();
                 }
                 catch {}
@@ -538,7 +559,8 @@ namespace StickyNotes__
                 {
                     // plain_text is a searchable mirror of `content` (which is Base64-encoded
                     // XamlPackage and not itself searchable) kept in sync by CreateNote/UpdateNote.
-                    conditions.Add("(n.title LIKE $search OR n.plain_text LIKE $search OR n.ocr_text LIKE $search)");
+                    // Also search the ocr_text of any attachments associated with the note.
+                    conditions.Add("(n.title LIKE $search OR n.plain_text LIKE $search OR n.ocr_text LIKE $search OR n.id IN (SELECT note_id FROM note_attachments WHERE ocr_text LIKE $search))");
                     cmd.Parameters.AddWithValue("$search", $"%{searchQuery}%");
                 }
 
@@ -727,7 +749,7 @@ namespace StickyNotes__
             {
                 conn.Open();
                 var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT id, note_id, file_name, file_path, added_at FROM note_attachments ORDER BY added_at ASC;";
+                cmd.CommandText = "SELECT id, note_id, file_name, file_path, added_at, ocr_text FROM note_attachments ORDER BY added_at ASC;";
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
@@ -738,7 +760,8 @@ namespace StickyNotes__
                             NoteId = reader.GetInt32(1),
                             FileName = reader.GetString(2),
                             FilePath = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                            AddedAt = reader.IsDBNull(4) ? DateTime.MinValue : DateTime.Parse(reader.GetString(4))
+                            AddedAt = reader.IsDBNull(4) ? DateTime.MinValue : DateTime.Parse(reader.GetString(4)),
+                            OcrText = reader.IsDBNull(5) ? null : reader.GetString(5)
                         };
                         if (!map.ContainsKey(attachment.NoteId)) map[attachment.NoteId] = new List<NoteAttachment>();
                         map[attachment.NoteId].Add(attachment);
@@ -996,6 +1019,45 @@ namespace StickyNotes__
             }
         }
 
+        public static async Task<NoteAttachment> AddAttachmentAsync(int noteId, string sourceFilePath)
+        {
+            string fileName = Path.GetFileName(sourceFilePath);
+            string storedFileName = $"{noteId}_{Guid.NewGuid():N}_{fileName}";
+            string storedPath = Path.Combine(AppConfig.AttachmentsDir, storedFileName);
+            
+            await Task.Run(() => File.Copy(sourceFilePath, storedPath, overwrite: true));
+
+            string? ocrText = null;
+            string ext = Path.GetExtension(sourceFilePath).ToLowerInvariant();
+            if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".gif")
+            {
+                try
+                {
+                    var ocrRes = await OcrHelper.PerformOcrAsync(storedPath);
+                    ocrText = ocrRes.Text;
+                }
+                catch {}
+            }
+
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO note_attachments (note_id, file_name, file_path, ocr_text)
+                    VALUES ($note_id, $file_name, $file_path, $ocr_text);
+                    SELECT last_insert_rowid();
+                ";
+                cmd.Parameters.AddWithValue("$note_id", noteId);
+                cmd.Parameters.AddWithValue("$file_name", fileName);
+                cmd.Parameters.AddWithValue("$file_path", storedPath);
+                cmd.Parameters.AddWithValue("$ocr_text", (object?)ocrText ?? DBNull.Value);
+                int id = Convert.ToInt32(cmd.ExecuteScalar());
+
+                return new NoteAttachment { Id = id, NoteId = noteId, FileName = fileName, FilePath = storedPath, AddedAt = DateTime.Now, OcrText = ocrText };
+            }
+        }
+
         public static List<NoteAttachment> GetNoteAttachments(int noteId)
         {
             var list = new List<NoteAttachment>();
@@ -1004,7 +1066,7 @@ namespace StickyNotes__
                 conn.Open();
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    SELECT id, note_id, file_name, file_path, added_at
+                    SELECT id, note_id, file_name, file_path, added_at, ocr_text
                     FROM note_attachments
                     WHERE note_id = $note_id
                     ORDER BY added_at ASC;
@@ -1020,7 +1082,8 @@ namespace StickyNotes__
                             NoteId = reader.GetInt32(1),
                             FileName = reader.GetString(2),
                             FilePath = reader.GetString(3),
-                            AddedAt = DateTime.Parse(reader.GetString(4))
+                            AddedAt = DateTime.Parse(reader.GetString(4)),
+                            OcrText = reader.IsDBNull(5) ? null : reader.GetString(5)
                         });
                     }
                 }
@@ -1357,6 +1420,46 @@ namespace StickyNotes__
             if (colorStr.Contains("blue") || colorStr == "4") return "blue";
             if (colorStr.Contains("charcoal") || colorStr.Contains("grey") || colorStr.Contains("gray") || colorStr == "5") return "charcoal";
             return "yellow";
+        }
+
+        public static string? GetCategoryColor(string category)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT color_hex FROM category_colors WHERE category = $category;";
+                cmd.Parameters.AddWithValue("$category", category);
+                return cmd.ExecuteScalar() as string;
+            }
+        }
+
+        public static void SetCategoryColor(string category, string colorHex)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT OR REPLACE INTO category_colors (category, color_hex)
+                    VALUES ($category, $colorHex);
+                ";
+                cmd.Parameters.AddWithValue("$category", category);
+                cmd.Parameters.AddWithValue("$colorHex", colorHex);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static void ResetCategoryColor(string category)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM category_colors WHERE category = $category;";
+                cmd.Parameters.AddWithValue("$category", category);
+                cmd.ExecuteNonQuery();
+            }
         }
     }
 }

@@ -360,10 +360,22 @@ namespace StickyNotes__
 
         #region Note Commands
 
-        public void CreateNewNote()
+        public void CreateNewNote(string category = "General")
         {
             int noteId = DatabaseHelper.CreateNote("", "", null, null, "yellow");
+            if (!string.IsNullOrEmpty(category) && category != "General")
+            {
+                var note = DatabaseHelper.GetNote(noteId);
+                if (note != null)
+                {
+                    note.Category = category;
+                    DatabaseHelper.UpdateNote(note);
+                }
+            }
             RefreshNotesList();
+            
+            var noteWindow = OpenNoteWindow(noteId);
+            noteWindow.FocusTitle();
         }
 
         private void SpotlightButton_Click(object sender, RoutedEventArgs e)
@@ -508,6 +520,93 @@ namespace StickyNotes__
             RefreshTagsFilter();
         }
 
+        private static readonly string[] CategoryColors = { "#D49A13", "#1A8F54", "#C2185B", "#7B1FA2", "#0288D1", "#e65100" };
+
+        private static Brush GetCategoryColorBrush(string categoryName)
+        {
+            if (string.IsNullOrEmpty(categoryName) || categoryName == "General")
+                return Brushes.White;
+
+            string? customHex = DatabaseHelper.GetCategoryColor(categoryName);
+            var converter = new System.Windows.Media.BrushConverter();
+            if (!string.IsNullOrEmpty(customHex))
+            {
+                try
+                {
+                    return (Brush)converter.ConvertFromString(customHex)!;
+                }
+                catch {}
+            }
+
+            int hash = 0;
+            foreach (char c in categoryName)
+                hash = hash * 31 + c;
+
+            int idx = Math.Abs(hash) % CategoryColors.Length;
+            return (Brush)converter.ConvertFromString(CategoryColors[idx])!;
+        }
+
+        public ContextMenu CreateCategoryContextMenu(string categoryName, Action onChanged)
+        {
+            var menu = new ContextMenu();
+
+            var colors = new[]
+            {
+                ("Blue", "#0288D1"),
+                ("Green", "#1A8F54"),
+                ("Purple", "#7B1FA2"),
+                ("Pink", "#C2185B"),
+                ("Yellow", "#D49A13"),
+                ("Orange", "#e65100"),
+                ("Red", "#d32f2f"),
+                ("Gray", "#888888")
+            };
+
+            var converter = new System.Windows.Media.BrushConverter();
+            foreach (var (name, hex) in colors)
+            {
+                var item = new MenuItem { Header = name };
+                
+                item.Icon = new System.Windows.Shapes.Ellipse
+                {
+                    Width = 10,
+                    Height = 10,
+                    Fill = (Brush)converter.ConvertFromString(hex)!,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                };
+
+                item.Click += (s, e) =>
+                {
+                    DatabaseHelper.SetCategoryColor(categoryName, hex);
+                    onChanged();
+                };
+                menu.Items.Add(item);
+            }
+
+            menu.Items.Add(new Separator());
+
+            var resetItem = new MenuItem { Header = "Reset to Default" };
+            resetItem.Icon = new System.Windows.Shapes.Ellipse
+            {
+                Width = 10,
+                Height = 10,
+                Stroke = Brushes.White,
+                StrokeThickness = 1,
+                Fill = Brushes.Transparent,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            resetItem.Click += (s, e) =>
+            {
+                DatabaseHelper.ResetCategoryColor(categoryName);
+                onChanged();
+            };
+            menu.Items.Add(resetItem);
+
+            return menu;
+        }
+
         private static readonly Dictionary<string, bool> _expanderStates = new Dictionary<string, bool>();
 
         public void RefreshNotesList()
@@ -557,6 +656,29 @@ namespace StickyNotes__
 
             if (_sortOrder == "category")
             {
+                // Favorites always show at the top of category view as well (Request 2)
+                var favorites = viewModels.Where(vm => vm.IsFavorite).ToList();
+                if (favorites.Count > 0)
+                {
+                    var favoritesHeader = new TextBlock
+                    {
+                        Text = $"★ Favorites ({favorites.Count})",
+                        Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)),
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12.5,
+                        Margin = new Thickness(0, 0, 0, 8)
+                    };
+                    NotesGroupPanel.Children.Add(favoritesHeader);
+
+                    var favoritesItemsControl = new ItemsControl
+                    {
+                        ItemTemplate = template,
+                        ItemsSource = favorites,
+                        Margin = new Thickness(0, 0, 0, 12)
+                    };
+                    NotesGroupPanel.Children.Add(favoritesItemsControl);
+                }
+
                 // Group by category, sorting General category last
                 var groups = viewModels
                     .GroupBy(vm => vm.Category)
@@ -569,9 +691,48 @@ namespace StickyNotes__
                     string categoryName = group.Key;
                     var groupItems = group.ToList();
 
+                    var catBrush = GetCategoryColorBrush(categoryName);
+                    var headerPanel = new StackPanel { Orientation = Orientation.Horizontal };
+                    var headerText = new TextBlock
+                    {
+                        Text = $"{categoryName} ({groupItems.Count})",
+                        Foreground = catBrush,
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12.5,
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    headerPanel.Children.Add(headerText);
+
+                    var addBtn = new Button
+                    {
+                        Content = "➕",
+                        ToolTip = $"Add new note to {categoryName}",
+                        Background = Brushes.Transparent,
+                        BorderThickness = new Thickness(0),
+                        Foreground = catBrush,
+                        FontSize = 10,
+                        Cursor = Cursors.Hand,
+                        Margin = new Thickness(8, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+
+                    string currentCatName = categoryName;
+                    addBtn.PreviewMouseLeftButtonDown += (s, args) =>
+                    {
+                        args.Handled = true;
+                        CreateNewNote(currentCatName);
+                    };
+                    headerPanel.Children.Add(addBtn);
+
+                    headerPanel.ContextMenu = CreateCategoryContextMenu(categoryName, () =>
+                    {
+                        RefreshNotesList();
+                        _noteManagerWnd?.RefreshCategoryTabs();
+                    });
+
                     var expander = new Expander
                     {
-                        Header = $"{categoryName} ({groupItems.Count})",
+                        Header = headerPanel,
                         Foreground = Brushes.White,
                         FontWeight = FontWeights.Bold,
                         FontSize = 12.5,
@@ -1125,7 +1286,7 @@ namespace StickyNotes__
             return NoteContentHelper.SaveRange(range);
         }
 
-        private void SaveFilesToNewNote()
+        private async void SaveFilesToNewNote()
         {
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
@@ -1148,7 +1309,7 @@ namespace StickyNotes__
             {
                 try
                 {
-                    DatabaseHelper.AddAttachment(noteId, path);
+                    await DatabaseHelper.AddAttachmentAsync(noteId, path);
                     attachedCount++;
                 }
                 catch (Exception ex)
