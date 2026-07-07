@@ -247,7 +247,7 @@ namespace StickyNotes__
             {
                 if (_isAppBarRegistered)
                 {
-                    SetAppBarPosition();
+                    Win32Helper.SHAppBarMessage(Win32Helper.ABM_ACTIVATE, ref _appBarData);
                 }
             }
 

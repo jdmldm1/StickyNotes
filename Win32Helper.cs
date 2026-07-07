@@ -31,6 +31,7 @@ namespace StickyNotes__
         public const int ABM_REMOVE = 1;
         public const int ABM_QUERYPOS = 2;
         public const int ABM_SETPOS = 3;
+        public const int ABM_ACTIVATE = 6;
 
         public const int ABE_LEFT = 0;
         public const int ABE_TOP = 1;
