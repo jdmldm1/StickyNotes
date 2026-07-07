@@ -51,6 +51,13 @@ namespace StickyNotes__
         public MainWindow()
         {
             InitializeComponent();
+            try
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                _cachedDpiX = dpi.DpiScaleX;
+                _cachedDpiY = dpi.DpiScaleY;
+            }
+            catch {}
             DatabaseHelper.InitDatabase();
             InitializeNotifyIcon();
             StartClipboardMonitor();
@@ -370,17 +377,18 @@ namespace StickyNotes__
             }
         }
 
+        private double _cachedDpiX = 1.0;
+        private double _cachedDpiY = 1.0;
+
         private (double dpiX, double dpiY) GetDpiFactors()
         {
-            double dpiX = 1.0;
-            double dpiY = 1.0;
             var source = PresentationSource.FromVisual(this);
             if (source != null && source.CompositionTarget != null)
             {
-                dpiX = source.CompositionTarget.TransformToDevice.M11;
-                dpiY = source.CompositionTarget.TransformToDevice.M22;
+                _cachedDpiX = source.CompositionTarget.TransformToDevice.M11;
+                _cachedDpiY = source.CompositionTarget.TransformToDevice.M22;
             }
-            return (dpiX, dpiY);
+            return (_cachedDpiX, _cachedDpiY);
         }
 
         private void SetAppBarPosition(int width)
