@@ -93,6 +93,7 @@ namespace StickyNotes__
         {
             this.Show();
             this.WindowState = WindowState.Normal;
+            RegisterAppBar();
             this.Activate();
         }
 
@@ -117,6 +118,7 @@ namespace StickyNotes__
         {
             if (this.WindowState == WindowState.Minimized)
             {
+                UnregisterAppBar();
                 this.Hide();
             }
             base.OnStateChanged(e);
@@ -305,7 +307,11 @@ namespace StickyNotes__
 
         private void RegisterAppBar()
         {
+            if (_isAppBarRegistered) return;
+
             var wndHelper = new WindowInteropHelper(this);
+            if (wndHelper.Handle == IntPtr.Zero) return;
+
             _appBarData = new Win32Helper.APPBARDATA();
             _appBarData.cbSize = Marshal.SizeOf(typeof(Win32Helper.APPBARDATA));
             _appBarData.hWnd = wndHelper.Handle;
