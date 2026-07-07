@@ -326,7 +326,6 @@
                 </Border>
             </Grid>
 
-            <!-- Bottom Bar (Category, Tags & Resize Grip) -->
             <Grid Grid.Row="3" VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -334,29 +333,29 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="20"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Category Dropdown -->
                 <ComboBox Grid.Column="0" x:Name="CategoryComboBox" SelectionChanged="CategoryComboBox_SelectionChanged"
                           ToolTip="Change Category"
                           Margin="10,0,6,0" Padding="5,1" FontSize="9.5" MinWidth="66" MaxWidth="110"
                           Background="#20ffffff" Foreground="#ffffff" BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"/>
 
-                <!-- Tags List -->
                 <TextBlock Grid.Column="1" x:Name="TagsTextBlock" Text="No tags"
-                           Foreground="#A0ffffff" FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                           Foreground="#A0ffffff" FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           Cursor="Hand" ToolTip="Right-click to manage tags" PreviewMouseRightButtonDown="TagsTextBlock_PreviewMouseRightButtonDown"/>
 
-                <!-- AI Quick Format -->
                 <Button Grid.Column="2" x:Name="AiFormatButton" Content="🔷" Click="AiFormatButton_Click" ToolTip="AI Quick Format"
                         Padding="6,1" Background="#20ffffff" Foreground="#ffffff" FontSize="10" BorderThickness="0" Cursor="Hand" Margin="0,0,5,0" Visibility="Collapsed"/>
 
-                <!-- AI Summary / TL;DR -->
-                <Button Grid.Column="3" x:Name="AiSummaryButton" Content="⚡ TL;DR" Click="AiSummaryButton_Click" ToolTip="One-Click AI Summary / TL;DR"
+                <Button Grid.Column="3" x:Name="AiSummaryButton" Content="⚡" Click="AiSummaryButton_Click" ToolTip="One-Click AI Summary / TL;DR"
                         Padding="6,1" Background="#20ffffff" Foreground="#ffffff" FontSize="10" BorderThickness="0" Cursor="Hand" Margin="0,0,5,0" Visibility="Collapsed"/>
 
-                <!-- Add Tag -->
-                <Button Grid.Column="4" Content="+ Tag" Click="AddTagButton_Click"
+                <Button Grid.Column="4" x:Name="AiTagButton" Content="🏷️" Click="AiTagButton_Click" ToolTip="Generate Tags using Local AI"
+                        Padding="6,1" Background="#20ffffff" Foreground="#ffffff" FontSize="10" BorderThickness="0" Cursor="Hand" Margin="0,0,5,0" Visibility="Collapsed"/>
+
+                <Button Grid.Column="5" Content="+ Tag" Click="AddTagButton_Click"
                         Padding="5,1" Background="#20ffffff" Foreground="#ffffff" FontSize="9" BorderThickness="0" Cursor="Hand"/>
             </Grid>
 

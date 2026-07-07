@@ -168,7 +168,8 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border BorderBrush="{Binding DataContext.CardHeaderBrush, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                BorderThickness="1" Background="#16ffffff" CornerRadius="8" Padding="7,2" Margin="0,0,4,4">
+                                                BorderThickness="1" Background="#16ffffff" CornerRadius="8" Padding="7,2" Margin="0,0,4,4"
+                                                ContextMenuOpening="TagBorder_ContextMenuOpening">
                                             <TextBlock FontSize="9" Foreground="#ffffff" FontWeight="SemiBold">
                                                 <Run Text="#"/><Run Text="{Binding Mode=OneWay}"/>
                                             </TextBlock>

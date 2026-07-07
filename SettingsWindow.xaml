@@ -21,81 +21,82 @@
                 <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,0"/>
             </StackPanel>
 
-            <!-- Form -->
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,5,0,5">
             <Grid Margin="0,0,10,0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/> <!-- Row 0: Import Controls -->
-                    <RowDefinition Height="Auto"/> <!-- Row 1: Ollama AI Splitter -->
-                    <RowDefinition Height="Auto"/> <!-- Row 2: Ollama URL -->
-                    <RowDefinition Height="Auto"/> <!-- Row 3: Ollama Model -->
-                    <RowDefinition Height="Auto"/> <!-- Row 4: Docker Setup Button -->
-                    <RowDefinition Height="Auto"/> <!-- Row 5: Docker Status -->
-                    <RowDefinition Height="Auto"/> <!-- Row 6: UI Customization Splitter -->
-                    <RowDefinition Height="Auto"/> <!-- Row 7: Opacity Slider Row -->
-                    <RowDefinition Height="Auto"/> <!-- Row 8: Data Backup Splitter -->
-                    <RowDefinition Height="Auto"/> <!-- Row 9: Backup/Restore Buttons -->
-                    <RowDefinition Height="Auto"/> <!-- Row 10: Backup Status -->
-                    <RowDefinition Height="Auto"/> <!-- Row 11: Data Location Splitter -->
-                    <RowDefinition Height="Auto"/> <!-- Row 12: Data Location Path + Change Button -->
-                    <RowDefinition Height="Auto"/> <!-- Row 13: Data Location Status -->
-                    <RowDefinition Height="Auto"/> <!-- Row 14: Danger Zone Splitter -->
-                    <RowDefinition Height="Auto"/> <!-- Row 15: Clear All Notes Button -->
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Microsoft Import Row (Row 0) -->
                 <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Margin="0,5,0,15">
                     <TextBlock Text="Import your existing notes from the Windows Sticky Notes app. This will parse and migrate all active notes from your local database." 
                                Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                     <Button x:Name="ImportStickyNotesButton" Content="Import Windows Sticky Notes" Click="ImportStickyNotesButton_Click"
-                            Height="32" Background="#0084ff" Foreground="#ffffff" FontWeight="Bold" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0">
+                            Height="32" Background="#0084ff" Foreground="#ffffff" FontWeight="Bold" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0" Margin="0,0,0,10">
                         <Button.Resources>
                             <Style TargetType="Border">
                                 <Setter Property="CornerRadius" Value="6"/>
                             </Style>
                         </Button.Resources>
                     </Button>
-
                     <TextBlock Text="Have the AI sort all your notes into categories and tags in one pass. Useful occasionally, not something you'll run often."
-                               Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,15,0,10"/>
+                               Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,10"/>
                     <Button x:Name="AutoOrganizeSettingsButton" Content="🪄 Auto Organize Notes (AI)" Click="AutoOrganizeSettingsButton_Click"
-                            Height="32" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0"/>
+                            Height="32" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
                 </StackPanel>
 
-                <!-- Ollama AI Splitter (Row 1) -->
-                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,10,0,5">
+                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,5">
                     <TextBlock Text="Local Ollama AI Configuration" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
-                    <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,0"/>
+                    <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
                 </StackPanel>
 
-                <!-- Ollama URL (Row 2) -->
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Ollama URL:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
                 <TextBox x:Name="OllamaUrlTextBox" Grid.Row="2" Grid.Column="1" Background="#2d2d2d" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Padding="5,3" Margin="0,5" CaretBrush="White"/>
 
-                <!-- Ollama Model (Row 3) -->
                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Ollama Model:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
                 <TextBox x:Name="OllamaModelTextBox" Grid.Row="3" Grid.Column="1" Background="#2d2d2d" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Padding="5,3" Margin="0,5" CaretBrush="White" ToolTip="Leave empty to auto-detect first running model."/>
 
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Docker Setup:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
-                <Button x:Name="DockerSetupBtn" Grid.Row="4" Grid.Column="1" Content="Auto Setup Ollama via Docker (Qwen 2.5 Coder:3b)" Click="DockerSetupBtn_Click"
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Auto-Tagging:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
+                <CheckBox x:Name="AutoTagCheckBox" Grid.Row="4" Grid.Column="1" Content="Enable AI Auto-Tagging on Screen Capture and Clipboard Import" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,5"/>
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Docker Setup:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
+                <Button x:Name="DockerSetupBtn" Grid.Row="5" Grid.Column="1" Content="Auto Setup Ollama via Docker (Qwen 2.5 Coder:3b)" Click="DockerSetupBtn_Click"
                         Height="28" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Margin="0,5" HorizontalAlignment="Left" Padding="15,0"/>
 
-                <!-- Docker Status (Row 5) -->
-                <TextBlock x:Name="SetupStatusTextBlock" Grid.Row="5" Grid.Column="1" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
+                <TextBlock x:Name="SetupStatusTextBlock" Grid.Row="6" Grid.Column="1" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
 
-                <!-- UI Customization Splitter (Row 6) -->
-                <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                <StackPanel Grid.Row="7" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="UI Customization" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,0"/>
                 </StackPanel>
 
-                <!-- Sidebar Opacity Row (Row 7) -->
-                <TextBlock Grid.Row="7" Grid.Column="0" Text="Sidebar Opacity:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
-                <Grid Grid.Row="7" Grid.Column="1" Margin="0,8">
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="Sidebar Opacity:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
+                <Grid Grid.Row="8" Grid.Column="1" Margin="0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="36"/>
@@ -109,16 +110,14 @@
                                VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="11"/>
                 </Grid>
 
-                <!-- Data Backup Splitter (Row 8) -->
-                <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="Backup &amp; Restore" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
                     <TextBlock Text="Back up all your notes, images, and attachments to a single file, or restore from a previous backup. Restoring overwrites your current notes."
                                Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                 </StackPanel>
 
-                <!-- Backup/Restore Buttons (Row 9) -->
-                <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,5">
+                <StackPanel Grid.Row="10" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,5">
                     <Button x:Name="BackupNowButton" Content="Back Up Now" Click="BackupNowButton_Click"
                             Height="30" Background="#0084ff" Foreground="#ffffff" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Padding="15,0" Margin="0,0,10,0">
                         <Button.Resources>
@@ -137,42 +136,35 @@
                     </Button>
                 </StackPanel>
 
-                <!-- Backup Status (Row 10) -->
-                <TextBlock x:Name="BackupStatusTextBlock" Grid.Row="10" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
+                <TextBlock x:Name="BackupStatusTextBlock" Grid.Row="11" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
 
-                <!-- Data Location Splitter (Row 11) -->
-                <StackPanel Grid.Row="11" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                <StackPanel Grid.Row="12" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="Data Location" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
                     <TextBlock Text="Where your notes database, images, and attachments are stored. Moving it copies everything to the new location and removes it from the old one."
                                Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                 </StackPanel>
 
-                <!-- Data Location Path + Change Button (Row 12) -->
-                <StackPanel Grid.Row="12" Grid.ColumnSpan="2" Margin="0,0,0,5">
+                <StackPanel Grid.Row="13" Grid.ColumnSpan="2" Margin="0,0,0,5">
                     <TextBlock x:Name="DataLocationPathText" Text="" Foreground="#cccccc" FontSize="10.5" TextWrapping="Wrap" Margin="0,0,0,8"/>
                     <Button x:Name="ChangeDataLocationButton" Content="Change Location..." Click="ChangeDataLocationButton_Click"
                             Height="30" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0"/>
                 </StackPanel>
 
-                <!-- Data Location Status (Row 13) -->
-                <TextBlock x:Name="DataLocationStatusTextBlock" Grid.Row="13" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
+                <TextBlock x:Name="DataLocationStatusTextBlock" Grid.Row="14" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
 
-                <!-- Danger Zone Splitter (Row 14) -->
-                <StackPanel Grid.Row="14" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                <StackPanel Grid.Row="15" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="Danger Zone" FontSize="13" FontWeight="SemiBold" Foreground="#ff5252"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
                     <TextBlock Text="Permanently deletes every note, image, and attachment. This cannot be undone -- back up first if you're not sure."
                                Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                 </StackPanel>
 
-                <!-- Clear All Notes Button (Row 15) -->
-                <Button x:Name="ClearAllNotesButton" Grid.Row="15" Grid.ColumnSpan="2" Content="Clear All Notes" Click="ClearAllNotesButton_Click"
+                <Button x:Name="ClearAllNotesButton" Grid.Row="16" Grid.ColumnSpan="2" Content="Clear All Notes" Click="ClearAllNotesButton_Click"
                         Height="30" Background="#3a1414" Foreground="#ff8080" BorderBrush="#5c2020" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0" Margin="0,0,0,5"/>
             </Grid>
             </ScrollViewer>
 
-            <!-- Buttons -->
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
                 <Button Content="Save" Width="80" Height="28" Background="#0084ff" Foreground="#ffffff" FontWeight="Bold" Click="SaveButton_Click" BorderThickness="0" Margin="0,0,10,0">
                     <Button.Resources>

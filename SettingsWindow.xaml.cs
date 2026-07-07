@@ -20,6 +20,7 @@ namespace StickyNotes__
         public string OllamaUrl { get; set; } = "http://localhost:11434";
         public string OllamaModel { get; set; } = "";
         public double SidebarOpacity { get; set; } = 0.9;
+        public bool AutoTagNewNotes { get; set; } = false;
     }
 
     public partial class SettingsWindow : Window
@@ -51,6 +52,7 @@ namespace StickyNotes__
                     {
                         OllamaUrlTextBox.Text = string.IsNullOrEmpty(config.OllamaUrl) ? "http://localhost:11434" : config.OllamaUrl;
                         OllamaModelTextBox.Text = config.OllamaModel;
+                        AutoTagCheckBox.IsChecked = config.AutoTagNewNotes;
 
                         double opacityPct = Math.Round(config.SidebarOpacity * 100);
                         opacityPct = Math.Max(20, Math.Min(100, opacityPct));
@@ -63,6 +65,7 @@ namespace StickyNotes__
                 {
                     OllamaUrlTextBox.Text = "http://localhost:11434";
                     OpacitySlider.Value = 90;
+                    AutoTagCheckBox.IsChecked = false;
                 }
             }
             catch (Exception ex)
@@ -99,6 +102,7 @@ namespace StickyNotes__
                 config.OllamaUrl = OllamaUrlTextBox.Text.Trim();
                 config.OllamaModel = OllamaModelTextBox.Text.Trim();
                 config.SidebarOpacity = OpacitySlider.Value / 100.0;
+                config.AutoTagNewNotes = AutoTagCheckBox.IsChecked == true;
 
                 string newJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(AppConfig.SettingsPath, newJson);

@@ -1248,11 +1248,10 @@ namespace StickyNotes__
                             Console.WriteLine($"OCR failed (non-fatal): {ex.Message}");
                         }
 
-                        // Add auto tags (regex + Ollama AI if running)
                         var tags = new HashSet<string>(ocrTags);
                         try
                         {
-                            if (!string.IsNullOrEmpty(ocrText) && await AiHelper.IsOllamaRunningAsync())
+                            if (SettingsService.Current.AutoTagNewNotes && !string.IsNullOrEmpty(ocrText) && await AiHelper.IsOllamaRunningAsync())
                             {
                                 var aiTags = await AiHelper.AutoTagTextAsync(ocrText);
                                 foreach (var tag in aiTags)
@@ -1811,6 +1810,51 @@ namespace StickyNotes__
             menu.IsOpen = true;
         }
 
+        private void TagBorder_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is not Border border) return;
+            string? tag = border.DataContext as string;
+            if (string.IsNullOrEmpty(tag)) return;
+
+            var parent = VisualTreeHelper.GetParent(border);
+            while (parent != null && parent is not Border { Name: "CardBorder" })
+            {
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+
+            if (parent is Border cardBorder && cardBorder.DataContext is NoteCardViewModel noteVm)
+            {
+                int noteId = noteVm.Id;
+                var menu = new ContextMenu();
+
+                var removeItem = new MenuItem { Header = $"Remove #{tag}" };
+                removeItem.Click += (s, args) =>
+                {
+                    DatabaseHelper.RemoveTagFromNote(noteId, tag);
+                    RefreshNotesList();
+                    RefreshTagsFilter();
+                };
+                menu.Items.Add(removeItem);
+
+                var renameItem = new MenuItem { Header = "Rename Tag..." };
+                renameItem.Click += (s, args) =>
+                {
+                    var dlg = new InputDialog("Enter new tag name:", "Rename Tag", tag) { Owner = this };
+                    if (dlg.ShowDialog() == true && !string.IsNullOrEmpty(dlg.Answer))
+                    {
+                        string newTag = dlg.Answer.Trim().ToLower();
+                        DatabaseHelper.RemoveTagFromNote(noteId, tag);
+                        DatabaseHelper.AddTagToNote(noteId, newTag);
+                        RefreshNotesList();
+                        RefreshTagsFilter();
+                    }
+                };
+                menu.Items.Add(renameItem);
+
+                border.ContextMenu = menu;
+            }
+        }
+
         private void FavoriteButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is int id)
@@ -1992,7 +2036,7 @@ namespace StickyNotes__
                 noteId = DatabaseHelper.CreateNote("Clipboard Image", "", filepath, ocrResult.Text, "yellow");
 
                 var tags = new HashSet<string>(ocrResult.Tags);
-                if (await AiHelper.IsOllamaRunningAsync())
+                if (SettingsService.Current.AutoTagNewNotes && await AiHelper.IsOllamaRunningAsync())
                 {
                     var aiTags = await AiHelper.AutoTagTextAsync(ocrResult.Text);
                     foreach (var tag in aiTags)
@@ -2016,7 +2060,7 @@ namespace StickyNotes__
                     if (item.FullText.Contains("http://") || item.FullText.Contains("https://")) tags.Add("link");
                     if (item.FullText.Contains("@")) tags.Add("contact");
 
-                    if (await AiHelper.IsOllamaRunningAsync())
+                    if (SettingsService.Current.AutoTagNewNotes && await AiHelper.IsOllamaRunningAsync())
                     {
                         var aiTags = await AiHelper.AutoTagTextAsync(item.FullText);
                         foreach (var tag in aiTags)
