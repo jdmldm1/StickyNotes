@@ -98,9 +98,9 @@ namespace StickyNotes__
             this.Width = 350;
             this.Height = screenHeight;
 
+            SetAppBarPosition(350);
             this.Show();
             this.WindowState = WindowState.Normal;
-            SetAppBarPosition(350);
             this.Activate();
         }
 
