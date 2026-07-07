@@ -91,9 +91,9 @@ namespace StickyNotes__
 
         private void RestoreFromTray()
         {
-            RegisterAppBar();
             this.Show();
             this.WindowState = WindowState.Normal;
+            RegisterAppBar();
             this.Activate();
         }
 
@@ -120,6 +120,7 @@ namespace StickyNotes__
             {
                 UnregisterAppBar();
                 this.Hide();
+                this.WindowState = WindowState.Normal;
             }
             base.OnStateChanged(e);
         }
@@ -132,7 +133,9 @@ namespace StickyNotes__
 
         private void MinimizeButton_Click(object sender, RoutedEventArgs e)
         {
-            this.WindowState = WindowState.Minimized;
+            UnregisterAppBar();
+            this.Hide();
+            this.WindowState = WindowState.Normal;
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
@@ -363,6 +366,12 @@ namespace StickyNotes__
             _appBarData.rc.Bottom = screenHeight;
 
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_SETPOS, ref _appBarData);
+
+            // Re-assert desired bounds one final time prior to setting window position
+            _appBarData.rc.Left = screenWidth - 350;
+            _appBarData.rc.Top = 0;
+            _appBarData.rc.Right = screenWidth;
+            _appBarData.rc.Bottom = screenHeight;
 
             Win32Helper.SetWindowPos(
                 wndHelper.Handle,
