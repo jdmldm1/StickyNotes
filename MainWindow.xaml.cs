@@ -1855,6 +1855,26 @@ namespace StickyNotes__
             }
         }
 
+        private void RemoveTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn) return;
+            string? tag = btn.Tag as string;
+            if (string.IsNullOrEmpty(tag)) return;
+
+            var parent = VisualTreeHelper.GetParent(btn);
+            while (parent != null && parent is not Border { Name: "CardBorder" })
+            {
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+
+            if (parent is Border cardBorder && cardBorder.DataContext is NoteCardViewModel noteVm)
+            {
+                DatabaseHelper.RemoveTagFromNote(noteVm.Id, tag);
+                RefreshNotesList();
+                RefreshTagsFilter();
+            }
+        }
+
         private void FavoriteButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is int id)
