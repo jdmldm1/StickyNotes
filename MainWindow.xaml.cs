@@ -302,10 +302,9 @@ namespace StickyNotes__
             }
             else if (msg == WM_ACTIVATE)
             {
-                // Let AppBar know the window activated
                 if (_isAppBarRegistered)
                 {
-                    Win32Helper.SHAppBarMessage(Win32Helper.ABM_SETPOS, ref _appBarData);
+                    SetAppBarPosition();
                 }
             }
 
@@ -358,7 +357,7 @@ namespace StickyNotes__
             _appBarData.rc.Bottom = screenHeight;
 
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_QUERYPOS, ref _appBarData);
-
+            
             // Re-assert desired bounds to prevent the OS from shifting left on multiple calls
             _appBarData.rc.Left = screenWidth - 350;
             _appBarData.rc.Top = 0;
@@ -366,6 +365,12 @@ namespace StickyNotes__
             _appBarData.rc.Bottom = screenHeight;
 
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_SETPOS, ref _appBarData);
+
+            // Sync WPF window properties so WPF layout engine is in sync with Win32
+            this.Left = screenWidth - 350;
+            this.Top = 0;
+            this.Width = 350;
+            this.Height = screenHeight;
 
             // Re-assert desired bounds one final time prior to setting window position
             _appBarData.rc.Left = screenWidth - 350;
