@@ -862,8 +862,21 @@ namespace StickyNotes__
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            // Save final state
-            SaveNoteContent();
+            string title = NoteTitleTextBox.Text.Trim();
+            TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
+            string plainText = range.Text.Trim();
+            var attachments = DatabaseHelper.GetNoteAttachments(_noteId);
+
+            if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(plainText) && (attachments == null || attachments.Count == 0))
+            {
+                DatabaseHelper.DeleteNote(_noteId);
+                NotifyNotesChanged();
+            }
+            else
+            {
+                SaveNoteContent();
+            }
+
             var main = Application.Current.MainWindow as MainWindow;
             main?.NotifyNoteWindowClosed(_noteId);
         }
