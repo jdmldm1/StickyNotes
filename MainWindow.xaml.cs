@@ -98,7 +98,7 @@ namespace StickyNotes__
             this.Width = 350;
             this.Height = screenHeight;
 
-            SetAppBarPosition(350);
+            RegisterAppBar();
             this.Show();
             this.WindowState = WindowState.Normal;
             this.Activate();
@@ -125,7 +125,7 @@ namespace StickyNotes__
         {
             if (this.WindowState == WindowState.Minimized)
             {
-                SetAppBarPosition(0);
+                UnregisterAppBar();
                 this.Hide();
                 this.WindowState = WindowState.Normal;
             }
@@ -140,7 +140,7 @@ namespace StickyNotes__
 
         private void MinimizeButton_Click(object sender, RoutedEventArgs e)
         {
-            SetAppBarPosition(0);
+            UnregisterAppBar();
             this.Hide();
         }
 
@@ -417,17 +417,11 @@ namespace StickyNotes__
 
             if (width > 0)
             {
-                // Sync WPF window properties so WPF layout engine is in sync in logical pixels
-                this.Left = screenWidth - width;
-                this.Top = 0;
-                this.Width = width;
-                this.Height = screenHeight;
-
-                // Re-assert desired physical bounds one final time prior to setting window position
-                _appBarData.rc.Left = physicalLeft;
-                _appBarData.rc.Top = physicalTop;
-                _appBarData.rc.Right = physicalRight;
-                _appBarData.rc.Bottom = physicalBottom;
+                // Convert approved physical bounds back to logical pixels for WPF properties
+                this.Left = _appBarData.rc.Left / dpiX;
+                this.Top = _appBarData.rc.Top / dpiY;
+                this.Width = (_appBarData.rc.Right - _appBarData.rc.Left) / dpiX;
+                this.Height = (_appBarData.rc.Bottom - _appBarData.rc.Top) / dpiY;
 
                 Win32Helper.SetWindowPos(
                     wndHelper.Handle,
@@ -586,7 +580,7 @@ namespace StickyNotes__
         {
             if (this.Visibility == Visibility.Visible)
             {
-                SetAppBarPosition(0);
+                UnregisterAppBar();
                 this.Hide();
             }
             else
