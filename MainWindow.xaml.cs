@@ -91,9 +91,16 @@ namespace StickyNotes__
 
         private void RestoreFromTray()
         {
+            int screenWidth = (int)SystemParameters.PrimaryScreenWidth;
+            int screenHeight = (int)SystemParameters.PrimaryScreenHeight;
+            this.Left = screenWidth - 350;
+            this.Top = 0;
+            this.Width = 350;
+            this.Height = screenHeight;
+
+            RegisterAppBar();
             this.Show();
             this.WindowState = WindowState.Normal;
-            RegisterAppBar();
             this.Activate();
         }
 
