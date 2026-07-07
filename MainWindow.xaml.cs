@@ -262,15 +262,15 @@ namespace StickyNotes__
 
         private void RegisterAllHotKeys()
         {
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyNewNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E); // N
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyScreenshot, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53); // S
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeySpotlight, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20); // Space
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyBrowserTabs, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54); // T
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeySaveFiles, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46); // F
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyMeetingNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D); // M
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyQuickCapture, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51); // Q
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyGraph, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x47); // G
-            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyToggleSidebar, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x5A); // Z
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyNewNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4E);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyScreenshot, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x53);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeySpotlight, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x20);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyBrowserTabs, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x54);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeySaveFiles, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x46);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyMeetingNote, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x4D);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyQuickCapture, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x51);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyGraph, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x47);
+            Win32Helper.RegisterHotKey(IntPtr.Zero, Win32Helper.HotkeyToggleSidebar, Win32Helper.MOD_WIN | Win32Helper.MOD_ALT | Win32Helper.MOD_NOREPEAT, 0x5A);
         }
 
         private void UnregisterAllHotKeys()
@@ -2270,9 +2270,35 @@ namespace StickyNotes__
 
         public string TagsList => Tags.Count > 0 ? string.Join("  ", Tags.Select(t => $"#{t}")) : "";
 
-        public Visibility ImageVisibility => (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath)) ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility ImageVisibility
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath))
+                {
+                    return Visibility.Visible;
+                }
+                var attachments = DatabaseHelper.GetNoteAttachments(Id);
+                if (attachments != null)
+                {
+                    foreach (var att in attachments)
+                    {
+                        if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
+                        {
+                            return Visibility.Visible;
+                        }
+                    }
+                }
+                return Visibility.Collapsed;
+            }
+        }
 
-        // --- Task Checklist Properties ---
+        private bool IsImageFile(string path)
+        {
+            string ext = System.IO.Path.GetExtension(path).ToLower();
+            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".bmp";
+        }
+
         public int TotalTasks => CountOccurrences(FullPlainText, "- [ ]") + CountOccurrences(FullPlainText, "- [x]") + CountOccurrences(FullPlainText, "* [ ]") + CountOccurrences(FullPlainText, "* [x]");
         public int CompletedTasks => CountOccurrences(FullPlainText, "- [x]") + CountOccurrences(FullPlainText, "* [x]");
 
@@ -2297,14 +2323,35 @@ namespace StickyNotes__
         {
             get
             {
-                if (string.IsNullOrEmpty(ImagePath) || !File.Exists(ImagePath)) return null;
+                string? path = null;
+                if (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath))
+                {
+                    path = ImagePath;
+                }
+                else
+                {
+                    var attachments = DatabaseHelper.GetNoteAttachments(Id);
+                    if (attachments != null)
+                    {
+                        foreach (var att in attachments)
+                        {
+                            if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
+                            {
+                                path = att.FilePath;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (path == null) return null;
                 try
                 {
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.DecodePixelWidth = 100; // Small decode height to save memory
-                    bitmap.UriSource = new Uri(ImagePath);
+                    bitmap.DecodePixelWidth = 100;
+                    bitmap.UriSource = new Uri(path);
                     bitmap.EndInit();
                     return bitmap;
                 }
@@ -2315,16 +2362,15 @@ namespace StickyNotes__
             }
         }
 
-        // Custom mapping colors for view cards
         private static readonly Dictionary<string, (string bg, string border, string text)> ColorsConfig = 
             new Dictionary<string, (string bg, string border, string text)>
         {
-            { "yellow", ("#CC221C12", "#D49A13", "#ffffff") },
-            { "green", ("#CC122018", "#1A8F54", "#ffffff") },
-            { "pink", ("#CC221218", "#C2185B", "#ffffff") },
-            { "purple", ("#CC1B1220", "#7B1FA2", "#ffffff") },
-            { "blue", ("#CC121C22", "#0288D1", "#ffffff") },
-            { "charcoal", ("#CC1B1B1B", "#424242", "#ffffff") }
+            { "yellow", ("#3C221C12", "#D49A13", "#ffffff") },
+            { "green", ("#3C122018", "#1A8F54", "#ffffff") },
+            { "pink", ("#3C221218", "#C2185B", "#ffffff") },
+            { "purple", ("#3C1B1220", "#7B1FA2", "#ffffff") },
+            { "blue", ("#3C121C22", "#0288D1", "#ffffff") },
+            { "charcoal", ("#3C1B1B1B", "#424242", "#ffffff") }
         };
 
         public System.Windows.Media.Brush CardBackground

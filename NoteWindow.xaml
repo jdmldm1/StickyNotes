@@ -360,26 +360,52 @@
                         Padding="5,1" Background="#20ffffff" Foreground="#ffffff" FontSize="9" BorderThickness="0" Cursor="Hand"/>
             </Grid>
 
-            <!-- Floating Rich Text Formatting Toolbar -->
             <Popup x:Name="FormatToolbarPopup" AllowsTransparency="True" Placement="RelativePoint" StaysOpen="True" VerticalOffset="-35" HorizontalOffset="0">
-                <Border Background="#E6262626" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="6" Padding="4">
+                <Border Background="#CC1A1A1A" BorderBrush="#22FFFFFF" BorderThickness="1" CornerRadius="6" Padding="3">
                     <Border.Effect>
-                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="Black" Opacity="0.4"/>
+                        <DropShadowEffect BlurRadius="12" ShadowDepth="0" Color="Black" Opacity="0.45"/>
                     </Border.Effect>
                     <StackPanel Orientation="Horizontal">
-                        <Button FontWeight="Bold" Width="24" Height="24" Click="FormatBold_Click" ToolTip="Bold" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
-                            <TextBlock Text="B" FontWeight="Bold"/>
+                        <StackPanel.Resources>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Width" Value="24"/>
+                                <Setter Property="Height" Value="24"/>
+                                <Setter Property="Margin" Value="1,0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#22FFFFFF"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Resources>
+                        <Button Click="FormatBold_Click" ToolTip="Bold">
+                            <TextBlock Text="B" FontWeight="Bold" Foreground="White" FontSize="11"/>
                         </Button>
-                        <Button Width="24" Height="24" Click="FormatItalic_Click" ToolTip="Italic" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
-                            <TextBlock Text="I" FontStyle="Italic"/>
+                        <Button Click="FormatItalic_Click" ToolTip="Italic">
+                            <TextBlock Text="I" FontStyle="Italic" Foreground="White" FontSize="11" FontFamily="Georgia"/>
                         </Button>
-                        <Button Width="24" Height="24" Click="FormatUnderline_Click" ToolTip="Underline" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
-                            <TextBlock Text="U" TextDecorations="Underline"/>
+                        <Button Click="FormatUnderline_Click" ToolTip="Underline">
+                            <TextBlock Text="U" TextDecorations="Underline" Foreground="White" FontSize="11"/>
                         </Button>
-                        <Button Width="24" Height="24" Click="FormatStrikethrough_Click" ToolTip="Strikethrough" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
-                            <TextBlock Text="S" TextDecorations="Strikethrough"/>
+                        <Button Click="FormatStrikethrough_Click" ToolTip="Strikethrough">
+                            <TextBlock Text="S" TextDecorations="Strikethrough" Foreground="White" FontSize="11"/>
                         </Button>
-                        <Button Content="🖌" Width="24" Height="24" Click="FormatHighlight_Click" ToolTip="Highlight Text" Background="Transparent" BorderThickness="0" Foreground="White" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                        <Button Click="FormatHighlight_Click" ToolTip="Highlight Text">
+                            <TextBlock Text="🖌" Foreground="White" FontSize="11"/>
+                        </Button>
                     </StackPanel>
                 </Border>
             </Popup>

@@ -10,16 +10,50 @@
     
     <Window.Resources>
         <DataTemplate x:Key="NoteCardTemplate">
-            <!-- Note Card -->
             <Border x:Name="CardBorder" Margin="0,0,0,14" CornerRadius="8" BorderThickness="1" Cursor="Hand"
                     Background="{Binding CardBackground}"
                     PreviewMouseLeftButtonDown="NoteCard_PreviewMouseLeftButtonDown"
-                    MouseMove="NoteCard_MouseMove">
+                    MouseMove="NoteCard_MouseMove"
+                    RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <ScaleTransform ScaleX="1.0" ScaleY="1.0"/>
+                </Border.RenderTransform>
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="4" ShadowDepth="1" Color="Black" Opacity="0.15"/>
+                </Border.Effect>
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="BorderBrush" Value="{Binding CardHeaderBrush}"/>
                         <Style.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                                                             To="1.025" Duration="0:0:0.15" DecelerationRatio="0.8"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                                                             To="1.025" Duration="0:0:0.15" DecelerationRatio="0.8"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="Effect.(DropShadowEffect.BlurRadius)"
+                                                             To="10" Duration="0:0:0.15"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="Effect.(DropShadowEffect.Opacity)"
+                                                             To="0.3" Duration="0:0:0.15"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleX)"
+                                                             To="1.0" Duration="0:0:0.15" AccelerationRatio="0.8"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(ScaleTransform.ScaleY)"
+                                                             To="1.0" Duration="0:0:0.15" AccelerationRatio="0.8"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="Effect.(DropShadowEffect.BlurRadius)"
+                                                             To="4" Duration="0:0:0.15"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="Effect.(DropShadowEffect.Opacity)"
+                                                             To="0.15" Duration="0:0:0.15"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                                 <Setter Property="BorderBrush" Value="#0084ff"/>
                             </Trigger>
                         </Style.Triggers>
@@ -104,7 +138,6 @@
                                Foreground="{Binding CardTextBrush}" FontSize="12" Margin="0,4,0,0"
                                TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Opacity="0.8"/>
 
-                    <!-- Task Progress Bar -->
                     <Grid Grid.Row="2" Grid.ColumnSpan="4" Margin="0,8,0,0" Visibility="{Binding TaskProgressVisibility}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -114,13 +147,11 @@
                         <ProgressBar Grid.Row="1" Height="4" Value="{Binding TaskProgressPercentage, Mode=OneWay}" Maximum="100" BorderThickness="0" Background="#33FFFFFF" Foreground="#0084ff"/>
                     </Grid>
 
-                    <!-- Thumbnail Image (if exists) -->
                     <Border Grid.Row="3" Grid.ColumnSpan="4" MaxHeight="60" CornerRadius="4" ClipToBounds="True" 
                             Margin="0,8,0,0" HorizontalAlignment="Left" Visibility="{Binding ImageVisibility}">
                         <Image Source="{Binding ThumbnailSource}" Stretch="Uniform"/>
                     </Border>
 
-                    <!-- Footer: tag pills (lower-left) + quick-add pill + last-updated date (lower-right) -->
                     <Grid Grid.Row="4" Grid.ColumnSpan="4" Margin="0,8,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -136,8 +167,9 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#22ffffff" CornerRadius="8" Padding="7,2" Margin="0,0,4,4">
-                                            <TextBlock FontSize="9" Foreground="#dddddd">
+                                        <Border BorderBrush="{Binding DataContext.CardHeaderBrush, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                BorderThickness="1" Background="#16ffffff" CornerRadius="8" Padding="7,2" Margin="0,0,4,4">
+                                            <TextBlock FontSize="9" Foreground="#ffffff" FontWeight="SemiBold">
                                                 <Run Text="#"/><Run Text="{Binding Mode=OneWay}"/>
                                             </TextBlock>
                                         </Border>
