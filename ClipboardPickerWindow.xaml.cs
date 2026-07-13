@@ -5,8 +5,6 @@ using System.Windows.Input;
 
 namespace StickyNotes__
 {
-    // Lets the user pick one item from clipboard history and convert it into a note, without
-    // permanently reserving sidebar space for a clipboard history list.
     public partial class ClipboardPickerWindow : Window
     {
         private readonly MainWindow _owner;

@@ -36,16 +36,12 @@ namespace StickyNotes__
         private GraphWindow? _graphWnd;
         private TemplatePickerWindow? _templatePickerWnd;
         private ClipboardPickerWindow? _clipboardPickerWnd;
-        private string _sortOrder = "date"; // "date" or "category"
+        private string _sortOrder = "date";
 
-
-
-        // Clipboard History fields
         private System.Windows.Threading.DispatcherTimer? _clipboardTimer;
         private readonly List<ClipboardHistoryItem> _clipboardHistory = new List<ClipboardHistoryItem>();
         private int _lastClipboardSequence = -1;
 
-        // Active floating note windows
         private readonly Dictionary<int, NoteWindow> _openNoteWindows = new Dictionary<int, NoteWindow>();
 
         public MainWindow()
@@ -164,13 +160,10 @@ namespace StickyNotes__
             CheckStaleNotes();
         }
 
-        // A note "has an open task" if it contains an unchecked checklist item -- see
-        // NoteWindow's UncheckedGlyph -- and hasn't been touched in a few days. Surfacing these
-        // closes the loop on notes that get filed under a checkbox and then never looked at again.
         private static bool IsStaleNote(Note note)
         {
             if (DateTime.Now - note.UpdatedAt < StaleNoteAge) return false;
-            return NoteContentHelper.ExtractPlainText(note.Content).Contains('☐'); // ☐
+            return NoteContentHelper.ExtractPlainText(note.Content).Contains('☐');
         }
 
         private void CheckStaleNotes()
@@ -209,7 +202,6 @@ namespace StickyNotes__
         {
             opacity = Math.Max(0.2, Math.Min(1.0, opacity));
             byte alpha = (byte)(opacity * 255);
-            // #121212 base color
             MainWindowBorder.Background = new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromArgb(alpha, 0x12, 0x12, 0x12));
         }
@@ -234,19 +226,11 @@ namespace StickyNotes__
             _spotlightWnd = new SpotlightWindow(this);
             _quickCaptureWnd = new QuickCaptureWindow(this);
 
-            // Snapping Right (AppBar)
             RegisterAppBar();
 
-            // Register Hotkeys on thread queue
             ComponentDispatcher.ThreadFilterMessage += ComponentDispatcher_ThreadFilterMessage;
             RegisterAllHotKeys();
 
-            // Note: intentionally NOT enabling the Mica backdrop here. Mica composites its own
-            // blurred/tinted wallpaper sample underneath the window, which fights with the sidebar
-            // opacity slider (ApplySidebarOpacity only controls a plain WPF alpha color) -- lowering
-            // opacity produced a muted haze instead of real see-through transparency. Leaving Mica
-            // off lets AllowsTransparency blend the Border's alpha directly against the desktop, so
-            // the slider actually makes the sidebar transparent as expected.
             Win32Helper.DwmSetWindowAttribute(wndHelper.Handle, Win32Helper.DWMWA_USE_IMMERSIVE_DARK_MODE, ref _darkModeValue, sizeof(int));
         }
 
@@ -347,8 +331,6 @@ namespace StickyNotes__
             }
         }
 
-        #region AppBar Implementation
-
         private void RegisterAppBar()
         {
             if (_isAppBarRegistered) return;
@@ -359,7 +341,7 @@ namespace StickyNotes__
             _appBarData = new Win32Helper.APPBARDATA();
             _appBarData.cbSize = Marshal.SizeOf(typeof(Win32Helper.APPBARDATA));
             _appBarData.hWnd = wndHelper.Handle;
-            _appBarData.uCallbackMessage = 0x8000 + 101; // WM_USER + 101
+            _appBarData.uCallbackMessage = 0x8000 + 101;
             _appBarData.uEdge = Win32Helper.ABE_RIGHT;
 
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_NEW, ref _appBarData);
@@ -397,12 +379,10 @@ namespace StickyNotes__
 
             var wndHelper = new WindowInteropHelper(this);
             var (dpiX, dpiY) = GetDpiFactors();
-            
-            // Query screen monitor metrics in logical pixels
+
             double screenWidth = SystemParameters.PrimaryScreenWidth;
             double screenHeight = SystemParameters.PrimaryScreenHeight;
 
-            // Convert to physical pixels for Win32 AppBar registration
             int physicalLeft = (int)((screenWidth - width) * dpiX);
             int physicalTop = 0;
             int physicalRight = (int)(screenWidth * dpiX);
@@ -414,8 +394,7 @@ namespace StickyNotes__
             _appBarData.rc.Bottom = physicalBottom;
 
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_QUERYPOS, ref _appBarData);
-            
-            // Re-assert desired physical bounds to prevent the OS from shifting left on multiple calls
+
             _appBarData.rc.Left = physicalLeft;
             _appBarData.rc.Top = physicalTop;
             _appBarData.rc.Right = physicalRight;
@@ -425,7 +404,6 @@ namespace StickyNotes__
 
             if (width > 0)
             {
-                // Convert approved physical bounds back to logical pixels for WPF properties
                 this.Left = _appBarData.rc.Left / dpiX;
                 this.Top = _appBarData.rc.Top / dpiY;
                 this.Width = (_appBarData.rc.Right - _appBarData.rc.Left) / dpiX;
@@ -442,10 +420,6 @@ namespace StickyNotes__
                 );
             }
         }
-
-        #endregion
-
-        #region Note Commands
 
         public void CreateNewNote(string category = "General")
         {
@@ -539,7 +513,7 @@ namespace StickyNotes__
             if (template != null)
                 CreateNoteFromTemplate(template);
             else
-                CreateNewNote(); // fallback
+                CreateNewNote();
         }
 
         public void OpenGraphWindow()
@@ -725,7 +699,6 @@ namespace StickyNotes__
                 notes = notes.Where(IsStaleNote).ToList();
             }
 
-            // Favorites always float to the top, then newest first within each group
             var sortedNotes = notes.OrderByDescending(n => n.IsFavorite).ThenByDescending(n => n.UpdatedAt).ToList();
 
             var tagsMap = DatabaseHelper.GetAllNoteTagsMap();
@@ -756,7 +729,6 @@ namespace StickyNotes__
 
             if (_sortOrder == "category")
             {
-                // Favorites always show at the top of category view as well (Request 2)
                 var favorites = viewModels.Where(vm => vm.IsFavorite).ToList();
                 if (favorites.Count > 0)
                 {
@@ -779,7 +751,6 @@ namespace StickyNotes__
                     NotesGroupPanel.Children.Add(favoritesItemsControl);
                 }
 
-                // Group by category, sorting General category last
                 var groups = viewModels
                     .GroupBy(vm => vm.Category)
                     .OrderBy(g => g.Key == "General" ? 1 : 0)
@@ -841,7 +812,6 @@ namespace StickyNotes__
                         BorderThickness = new Thickness(0)
                     };
 
-                    // Track and restore expander state
                     expander.IsExpanded = !_expanderStates.ContainsKey(categoryName) || _expanderStates[categoryName];
                     expander.Expanded += (s, e) => _expanderStates[categoryName] = true;
                     expander.Collapsed += (s, e) => _expanderStates[categoryName] = false;
@@ -859,9 +829,6 @@ namespace StickyNotes__
             }
             else
             {
-                // Flat chronological list, but favorites get their own always-visible section up
-                // top so it's obvious why a just-edited note isn't at the very top of the list --
-                // everything else lives in a collapsible "Notes" section below.
                 var favorites = viewModels.Where(vm => vm.IsFavorite).ToList();
                 var rest = viewModels.Where(vm => !vm.IsFavorite).ToList();
 
@@ -912,8 +879,6 @@ namespace StickyNotes__
             }
         }
 
-        // Invoked from the Settings window -- this is a one-time/occasional utility, not
-        // something used often enough to justify permanent sidebar real estate.
         public async Task RunAutoOrganizeAsync()
         {
             try
@@ -952,7 +917,6 @@ namespace StickyNotes__
                     return;
                 }
 
-                // Try to extract JSON from response (handling potential code block wraps)
                 int firstBrace = response.IndexOf('{');
                 int lastBrace = response.LastIndexOf('}');
                 if (firstBrace == -1 || lastBrace == -1)
@@ -970,10 +934,6 @@ namespace StickyNotes__
                 }
                 catch (JsonException)
                 {
-                    // Smaller/faster models (e.g. llama3.2:1b) sometimes cut the response off
-                    // mid-object once many notes are involved. Try to recover by trimming back
-                    // to the last fully-closed note entry and re-closing the object there,
-                    // rather than losing the whole batch to one truncated entry.
                     string? repaired = TryRepairTruncatedJsonObject(json);
                     mappings = repaired != null ? TryDeserializeMappings(repaired) : null;
                     wasTruncated = mappings != null;
@@ -997,7 +957,6 @@ namespace StickyNotes__
                             note.Category = pair.Value.category?.Trim() ?? "General";
                             DatabaseHelper.UpdateNote(note);
 
-                            // Clear existing tags and add new ones
                             DatabaseHelper.ClearNoteTags(noteId);
                             if (pair.Value.tags != null)
                             {
@@ -1042,9 +1001,6 @@ namespace StickyNotes__
             }
         }
 
-        // Scans a (possibly truncated) top-level JSON object and, if the tail got cut off
-        // mid-entry, trims back to the last fully-closed "key": {...} entry and re-closes the
-        // object there. Returns null if no complete entry could be found at all.
         private static string? TryRepairTruncatedJsonObject(string json)
         {
             int depth = 0;
@@ -1077,9 +1033,6 @@ namespace StickyNotes__
 
         private string GetPlainTextFromXaml(string xaml) => NoteContentHelper.ExtractPlainText(xaml);
 
-        // A note's title is always derived from the first line of its content (see
-        // NoteWindow.SaveNoteContent), so showing the full plain text under the title repeats
-        // that first line verbatim. Skip it and show only whatever comes after, on one line.
         private static string BuildCardSnippet(string fullPlainText)
         {
             if (string.IsNullOrEmpty(fullPlainText)) return "";
@@ -1195,10 +1148,8 @@ namespace StickyNotes__
 
         public async void TakeRegionScreenshot()
         {
-            // Minimize current main sidebar temporarily to avoid taking it in screenshot
             this.WindowState = WindowState.Minimized;
-            
-            // Wait 350ms for minimize animation to complete
+
             await System.Threading.Tasks.Task.Delay(350);
 
             try
@@ -1220,13 +1171,10 @@ namespace StickyNotes__
                 {
                     string imagePath = captureWnd.CapturedImagePath;
 
-                    // Restore sidebar instantly from tray
                     RestoreFromTray();
 
-                    // Wait a tiny bit for the restore transition to begin/complete before opening the note
                     await System.Threading.Tasks.Task.Delay(150);
 
-                    // Create new note with screenshot details instantly (empty OCR text for now)
                     int noteId = DatabaseHelper.CreateNote(
                         "Screenshot note", 
                         "", 
@@ -1235,12 +1183,10 @@ namespace StickyNotes__
                         "yellow"
                     );
 
-                    // Open note window and refresh notes list instantly
                     var noteWindow = OpenNoteWindow(noteId);
                     RefreshNotesList();
                     RefreshTagsFilter();
 
-                    // Run OCR and AI tagging asynchronously in the background
                     _ = System.Threading.Tasks.Task.Run(async () =>
                     {
                         string ocrText = "";
@@ -1273,14 +1219,12 @@ namespace StickyNotes__
                             Console.WriteLine($"AI tagging failed (non-fatal): {ex.Message}");
                         }
 
-                        // Add tags to note in database
                         foreach (var tag in tags)
                         {
                             if (!string.IsNullOrWhiteSpace(tag))
                                 DatabaseHelper.AddTagToNote(noteId, tag);
                         }
 
-                        // If OCR text was detected, update note content in database
                         if (!string.IsNullOrEmpty(ocrText))
                         {
                             string xamlContent = "";
@@ -1305,7 +1249,6 @@ namespace StickyNotes__
                             }
                         }
 
-                        // Notify UI thread to reload the note content in the open note window
                         Dispatcher.Invoke(() =>
                         {
                             if (noteWindow != null && noteWindow.IsLoaded)
@@ -1319,7 +1262,6 @@ namespace StickyNotes__
                 }
                 else
                 {
-                    // Restore sidebar if cancelled
                     RestoreFromTray();
                 }
             }
@@ -1373,7 +1315,6 @@ namespace StickyNotes__
             };
             linkParagraph.Inlines.Add(hyperlink);
 
-            // See BuildMeetingNoteXaml for why this explicit Foreground/FontFamily is required.
             var document = new FlowDocument(titleParagraph)
             {
                 Foreground = Brushes.White,
@@ -1437,7 +1378,7 @@ namespace StickyNotes__
         private static readonly List<NoteTemplateDef> NoteTemplates = new List<NoteTemplateDef>
         {
             new NoteTemplateDef { Name = "Blank Note", Icon = "📄" },
-            new NoteTemplateDef { Name = "Meeting Notes", Icon = "🗓️" }, // handled specially -- reuses CreateQuickMeetingNote
+            new NoteTemplateDef { Name = "Meeting Notes", Icon = "🗓️" },
             new NoteTemplateDef
             {
                 Name = "1:1 Meeting", Icon = "🗣️", Category = "Meetings", Color = "blue", Tag = "1-1",
@@ -1465,7 +1406,6 @@ namespace StickyNotes__
             var menu = new ContextMenu();
             menu.Style = (Style)FindResource(typeof(ContextMenu));
 
-            // 1. Built-in templates
             var builtInHeader = new MenuItem { Header = "Built-in Templates", IsEnabled = false, FontWeight = FontWeights.Bold };
             menu.Items.Add(builtInHeader);
 
@@ -1476,7 +1416,6 @@ namespace StickyNotes__
                 menu.Items.Add(item);
             }
 
-            // 2. User templates (if any)
             var userTemplates = DatabaseHelper.ListTemplates();
             if (userTemplates.Count > 0)
             {
@@ -1494,7 +1433,6 @@ namespace StickyNotes__
                 }
             }
 
-            // 3. More/Manage option
             menu.Items.Add(new Separator());
             var moreItem = new MenuItem { Header = "📋  Manage Templates..." };
             moreItem.Click += (s, args) => OpenTemplatePicker();
@@ -1563,8 +1501,6 @@ namespace StickyNotes__
 
             var document = new FlowDocument(titleParagraph)
             {
-                // See BuildMeetingNoteXaml for why Foreground/FontFamily must be set explicitly
-                // on any standalone FlowDocument not hosted in the live RichTextBox.
                 Foreground = Brushes.White,
                 FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, sans-serif")
             };
@@ -1600,9 +1536,6 @@ namespace StickyNotes__
             if (note != null)
             {
                 note.Category = "Meetings";
-                // Meeting notes have several sections (Date/Time, Attendees, Discussions, Action
-                // Items) that don't fit comfortably in the app's default 300x320 note size, so open
-                // them noticeably larger from the start.
                 note.W = 420;
                 note.H = 520;
                 DatabaseHelper.UpdateNote(note);
@@ -1629,10 +1562,6 @@ namespace StickyNotes__
 
             var document = new FlowDocument(titleParagraph)
             {
-                // A standalone FlowDocument (not hosted inside a live RichTextBox) has no ambient
-                // white text/font to inherit, so its defaults (black, serif "Georgia") get baked into
-                // every child Run when serialized -- unreadable and off-brand on the app's dark,
-                // sans-serif note UI. Setting them explicitly here fixes both for every paragraph.
                 Foreground = Brushes.White,
                 FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, sans-serif")
             };
@@ -1672,10 +1601,6 @@ namespace StickyNotes__
             };
             _statusToastTimer.Start();
         }
-
-        #endregion
-
-        #region Control Event Handlers
 
         private void NewNoteButton_Click(object sender, RoutedEventArgs e) => CreateNewNote();
 
@@ -1903,7 +1828,6 @@ namespace StickyNotes__
                 var ans = MessageBox.Show("Are you sure you want to delete this note?", "Delete Note", MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (ans == MessageBoxResult.Yes)
                 {
-                    // Clean image
                     var note = DatabaseHelper.GetNote(id);
                     if (note != null && !string.IsNullOrEmpty(note.ImagePath) && File.Exists(note.ImagePath))
                     {
@@ -1911,8 +1835,7 @@ namespace StickyNotes__
                     }
 
                     DatabaseHelper.DeleteNote(id);
-                    
-                    // Close note window if open
+
                     if (_openNoteWindows.TryGetValue(id, out NoteWindow? noteWindow))
                     {
                         noteWindow.Close();
@@ -1924,11 +1847,8 @@ namespace StickyNotes__
             }
         }
 
-        #endregion
-
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            // Close all note windows
             var openWindows = _openNoteWindows.Values.ToList();
             foreach (var wnd in openWindows)
             {
@@ -1942,18 +1862,13 @@ namespace StickyNotes__
             }
             catch {}
 
-            // Unregister AppBar
             UnregisterAppBar();
 
-            // Unregister hotkeys
             ComponentDispatcher.ThreadFilterMessage -= ComponentDispatcher_ThreadFilterMessage;
             UnregisterAllHotKeys();
 
-            // Stop clipboard timer
             _clipboardTimer?.Stop();
         }
-
-        #region Clipboard Monitoring & Actions
 
         private void StartClipboardMonitor()
         {
@@ -1966,11 +1881,6 @@ namespace StickyNotes__
         {
             try
             {
-                // The clipboard's sequence number only increments when its content actually
-                // changes, so this is the one reliable gate for "is this a new copy" -- comparing
-                // GetImage() results directly doesn't work, since it returns a fresh BitmapSource
-                // instance every call even when nothing changed, causing the same image to be
-                // re-added once per poll tick for as long as it stayed on the clipboard.
                 int currentSequence = Win32Helper.GetClipboardSequenceNumber();
                 if (currentSequence == _lastClipboardSequence) return;
                 _lastClipboardSequence = currentSequence;
@@ -2002,7 +1912,6 @@ namespace StickyNotes__
             }
             catch
             {
-                // Clipboard access can throw if occupied by another process, ignore and retry next second
             }
         }
 
@@ -2043,8 +1952,6 @@ namespace StickyNotes__
             RefreshNotesList();
         }
 
-        // Shared by the "+ From Clipboard" picker window -- converts a clipboard history entry
-        // into a real note, with the same OCR/AI auto-tagging clipboard items always got.
         public async Task<int> CreateNoteFromClipboardItemAsync(ClipboardHistoryItem item)
         {
             int noteId;
@@ -2108,10 +2015,6 @@ namespace StickyNotes__
             RefreshTagsFilter();
             return noteId;
         }
-
-        #endregion
-
-        #region Sidebar Context Menu Handlers
 
         private void ColorPaletteFromCard_Click(object sender, RoutedEventArgs e)
         {
@@ -2200,7 +2103,6 @@ namespace StickyNotes__
 
             var menu = new ContextMenu();
 
-            // List all distinct categories from the database
             var existingCategories = DatabaseHelper.ListNotes(null, null)
                 .Select(n => n.Category ?? "General")
                 .Distinct()
@@ -2233,7 +2135,6 @@ namespace StickyNotes__
 
             menu.Items.Add(new Separator());
 
-            // New Category option
             var newCatItem = new MenuItem { Header = "+ New Category..." };
             newCatItem.Click += (s, args) =>
             {
@@ -2260,11 +2161,8 @@ namespace StickyNotes__
             menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
             menu.IsOpen = true;
         }
-
-        #endregion
     }
 
-    // View Model for Clipboard Items
     public class ClipboardHistoryItem
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -2287,7 +2185,6 @@ namespace StickyNotes__
         }
     }
 
-    // View Model for Card Items
     public class QuickOpenItem
     {
         public string Label { get; set; } = "";
@@ -2331,9 +2228,6 @@ namespace StickyNotes__
 
         public Visibility QuickOpenVisibility => QuickOpenItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        // U+FE0F (variation selector-16) forces color-emoji presentation; without it WPF's
-        // font-linking sometimes falls back to a font with no glyph for these two codepoints
-        // and renders a tofu box instead of the icon.
         public string QuickOpenIcon => (QuickOpenItems.Any(i => i.IsFile) ? "📎" : "🔗") + "️";
 
         public string QuickOpenToolTip => QuickOpenItems.Count == 1

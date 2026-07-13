@@ -10,10 +10,6 @@ using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace StickyNotes__
 {
-    // A simplified, format-agnostic representation of one exportable line of note content.
-    // Both the Word and PDF writers consume this instead of walking the WPF FlowDocument
-    // themselves, since DocumentFormat.OpenXml.Wordprocessing types share several names
-    // (Paragraph, Run, Hyperlink, Bold, Italic) with System.Windows.Documents.
     public class ExportBlock
     {
         public string Text { get; set; } = "";

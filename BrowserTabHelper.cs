@@ -9,8 +9,6 @@ namespace StickyNotes__
 {
     public record BrowserTab(string Title, string Url);
 
-    // Reads the active tab (title + URL) from every open Chrome / Edge window
-    // via UI Automation, without requiring a browser extension or debugging port.
     public static class BrowserTabHelper
     {
         private static readonly HashSet<string> BrowserProcessNames = new(StringComparer.OrdinalIgnoreCase)
@@ -64,7 +62,6 @@ namespace StickyNotes__
                 }
                 catch
                 {
-                    // Skip windows we can't inspect (elevated processes, mid-teardown, etc.)
                 }
                 return true;
             }, IntPtr.Zero);
@@ -79,9 +76,6 @@ namespace StickyNotes__
                 var root = AutomationElement.FromHandle(hwnd);
                 if (root == null) return null;
 
-                // The omnibox's AutomationId is a dynamic per-instance view id (e.g. "view_1012"),
-                // not a stable string — but its ClassName ("OmniboxViewViews") is stable across
-                // Chrome/Edge versions and locales.
                 var condition = new PropertyCondition(AutomationElement.ClassNameProperty, "OmniboxViewViews");
 
                 var addressBar = root.FindFirst(TreeScope.Descendants, condition);
@@ -94,7 +88,6 @@ namespace StickyNotes__
             }
             catch
             {
-                // UI Automation can throw for windows that are mid-teardown or otherwise inaccessible.
             }
             return null;
         }
@@ -106,11 +99,6 @@ namespace StickyNotes__
 
             if (!Regex.IsMatch(text, @"^[a-zA-Z][a-zA-Z\d+\-.]*://"))
             {
-                // Chrome/Edge elide the scheme for http(s) pages, showing just the bare host+path
-                // (e.g. "example.com/path", "localhost:3000", or a single-label internal hostname
-                // like "shiloh:30080" with no dot at all -- common for intranet tools/dashboards).
-                // A search-box placeholder or typed query always contains a space, so that's the
-                // one reliable signal to reject non-URLs rather than requiring a dotted domain.
                 if (!text.Contains(' '))
                     text = "https://" + text;
                 else

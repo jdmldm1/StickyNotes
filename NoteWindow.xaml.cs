@@ -29,7 +29,6 @@ namespace StickyNotes__
         private string _lastHistoryPlain = "";
         private DateTime _lastHistoryTime = DateTime.MinValue;
 
-        // Colors dictionary matching PySide implementation
         private static readonly System.Collections.Generic.Dictionary<string, NoteColorProfile> ColorProfiles = 
             new System.Collections.Generic.Dictionary<string, NoteColorProfile>
         {
@@ -104,12 +103,9 @@ namespace StickyNotes__
         {
             if (_note == null) return;
 
-            // Title
             NoteTitleTextBox.Text = _note.Title ?? "";
             TitleTextBlock.Text = string.IsNullOrEmpty(_note.Title) ? "Sticky Note" : _note.Title;
 
-            // Geometry -- size and position are applied independently, since some notes (e.g.
-            // Quick Meeting Notes) set a custom starting size without pinning a screen position.
             this.Width = _note.W ?? 300;
             this.Height = _note.H ?? 320;
             if (_note.X != null && _note.Y != null)
@@ -118,7 +114,6 @@ namespace StickyNotes__
                 this.Top = _note.Y.Value;
             }
 
-            // Image
             if (!string.IsNullOrEmpty(_note.ImagePath) && File.Exists(_note.ImagePath))
             {
                 try
@@ -142,18 +137,15 @@ namespace StickyNotes__
                 ImageBorder.Visibility = Visibility.Collapsed;
             }
 
-            // Document text content
             if (!string.IsNullOrEmpty(_note.Content))
             {
                 TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
                 if (!NoteContentHelper.TryLoadRange(range, _note.Content))
                 {
-                    // Fallback to plain text if not valid XAML
                     NoteRichTextBox.Document.Blocks.Clear();
                     NoteRichTextBox.Document.Blocks.Add(new Paragraph(new Run(_note.Content)));
                 }
 
-                // Legacy title migration: strip the first paragraph if it matches _note.Title
                 if (!string.IsNullOrEmpty(_note.Title) && NoteRichTextBox.Document.Blocks.Count > 0)
                 {
                     var firstBlock = NoteRichTextBox.Document.Blocks.FirstBlock as Paragraph;
@@ -170,13 +162,10 @@ namespace StickyNotes__
                 }
             }
 
-            // Event handlers (hyperlink navigation, checkbox strikethrough) are not
-            // preserved by XAML serialization, so reattach them after loading.
             RewireInteractiveElements();
 
             TextRange initRange = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
 
-            // Legacy tag migration: append tags as #hashtags to the editor if not present
             var dbTags = DatabaseHelper.GetNoteTags(_noteId);
             if (dbTags.Count > 0)
             {
@@ -196,8 +185,7 @@ namespace StickyNotes__
                     TextRange endRange = new TextRange(NoteRichTextBox.Document.ContentEnd, NoteRichTextBox.Document.ContentEnd);
                     endRange.Text = sb.ToString();
                     SaveNoteContent();
-                    
-                    // Re-read initial text range for history tracking after edit
+
                     initRange = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
                 }
             }
@@ -220,8 +208,7 @@ namespace StickyNotes__
                 colorName = "yellow";
 
             var profile = ColorProfiles[colorName];
-            
-            // Set brushes (we use Dark theme profile by default for glassmorphism styling)
+
             WindowBorder.Background = profile.DarkBg;
             WindowBorder.BorderBrush = profile.DarkHeader;
             HeaderGrid.Background = profile.DarkHeader;
@@ -231,7 +218,6 @@ namespace StickyNotes__
             NoteTitleTextBox.CaretBrush = profile.DarkText;
             NoteRichTextBox.Foreground = profile.DarkText;
 
-            // Apply dynamic opacity color to the divider
             if (profile.DarkText is SolidColorBrush scb)
             {
                 TitleDivider.Background = new SolidColorBrush(Color.FromArgb(50, scb.Color.R, scb.Color.G, scb.Color.B));
@@ -241,7 +227,6 @@ namespace StickyNotes__
                 TitleDivider.Background = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255));
             }
 
-            // Enable Mica transparent effect via DWM helper
             var wndHelper = new WindowInteropHelper(this);
             Win32Helper.EnableMica(wndHelper.Handle, true);
         }
@@ -256,7 +241,6 @@ namespace StickyNotes__
 
         private void NewButton_Click(object sender, RoutedEventArgs e)
         {
-            // Request parent app window to spawn a new note
             var parent = Application.Current.MainWindow as MainWindow;
             parent?.CreateNewNote();
         }
@@ -271,7 +255,6 @@ namespace StickyNotes__
             var menu = new ContextMenu();
             menu.Style = (Style)FindResource(typeof(ContextMenu));
 
-            // Colors submenu
             var colorsItem = new MenuItem { Header = "Change Color" };
             foreach (var profile in ColorProfiles)
             {
@@ -282,7 +265,6 @@ namespace StickyNotes__
             }
             menu.Items.Add(colorsItem);
 
-            // Move to Category submenu
             var categoryItem = new MenuItem { Header = "Move to Category" };
             string currentCat = _note.Category ?? "General";
             var allNotes = DatabaseHelper.ListNotes(null, null);
@@ -313,12 +295,10 @@ namespace StickyNotes__
             menu.Items.Add(categoryItem);
             menu.Items.Add(new Separator());
 
-            // Copy
             var copyItem = new MenuItem { Header = "Copy Note Text" };
             copyItem.Click += (s, args) => CopyNoteToClipboard();
             menu.Items.Add(copyItem);
 
-            // Export submenu
             var exportItem = new MenuItem { Header = "Export Note" };
             var exportDocxItem = new MenuItem { Header = "Export as Word (.docx)" };
             exportDocxItem.Click += (s, args) => ExportNote("docx");
@@ -329,7 +309,6 @@ namespace StickyNotes__
             menu.Items.Add(exportItem);
             menu.Items.Add(new Separator());
 
-            // Save as Template
             var saveAsTemplateItem = new MenuItem { Header = "Save as Template" };
             saveAsTemplateItem.Click += (s, args) =>
             {
@@ -345,7 +324,6 @@ namespace StickyNotes__
             menu.Items.Add(saveAsTemplateItem);
             menu.Items.Add(new Separator());
 
-            // Delete
             var deleteItem = new MenuItem { Header = "Delete Note" };
             deleteItem.Click += (s, args) => DeleteNote();
             menu.Items.Add(deleteItem);
@@ -465,7 +443,7 @@ namespace StickyNotes__
                 }
                 else
                 {
-                    RefreshCategoryDropdown(); // revert the dropdown back to the current category
+                    RefreshCategoryDropdown();
                 }
                 return;
             }
@@ -475,9 +453,6 @@ namespace StickyNotes__
                 UpdateCategory(selected);
             }
         }
-
-
-
 
         private void DeleteNote()
         {
@@ -677,8 +652,6 @@ namespace StickyNotes__
             }
         }
 
-        #region File Attachments
-
         private static string GetFileGlyph(string fileName)
         {
             string ext = Path.GetExtension(fileName).ToLowerInvariant();
@@ -859,8 +832,6 @@ namespace StickyNotes__
             e.Handled = true;
         }
 
-        #endregion
-
         private void NoteTitleTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_isLoaded)
@@ -919,7 +890,6 @@ namespace StickyNotes__
             string title = NoteTitleTextBox.Text.Trim();
             TitleTextBlock.Text = string.IsNullOrEmpty(title) ? "Sticky Note" : title;
 
-            // Get rich document content, encoded so embedded controls (checkboxes) round-trip
             TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
             string xamlText = NoteContentHelper.SaveRange(range);
             string plainText = range.Text.Trim();
@@ -930,7 +900,6 @@ namespace StickyNotes__
             DatabaseHelper.UpdateNote(_note);
             ParseAndSaveWikiLinks(plainText);
 
-            // Sync hashtags in text to database tags
             var newTags = new HashSet<string>();
             string fullText = title + " " + plainText;
             foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(fullText, @"\B#([a-zA-Z0-9_-]+)"))
@@ -970,7 +939,6 @@ namespace StickyNotes__
 
             NotifyNotesChanged();
 
-            // Save history entry if changed significantly
             if (_lastHistoryContent != xamlText)
             {
                 int diff = Math.Abs(plainText.Length - _lastHistoryPlain.Length);
@@ -1123,9 +1091,6 @@ namespace StickyNotes__
             }
         }
 
-        // Unlike the options above, this appends to the note rather than replacing it -- the
-        // point is to pull tasks out of a longer note (e.g. a meeting note) without losing the
-        // rest of what was written.
         private async System.Threading.Tasks.Task ExtractActionItemsAsync()
         {
             TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
@@ -1198,8 +1163,6 @@ namespace StickyNotes__
                 this.Cursor = oldCursor;
             }
         }
-
-        #region Phase 2 Features (Markdown, AI Chat, Smart Exporter)
 
         private Border? _typingBubble;
         private bool _isMarkdownPreviewActive = false;
@@ -1553,10 +1516,6 @@ namespace StickyNotes__
             }
         }
 
-        #endregion
-
-        #region Floating Formatting Toolbar Implementation
-
         private void NoteRichTextBox_SelectionChanged(object sender, RoutedEventArgs e)
         {
             if (NoteRichTextBox == null || FormatToolbarPopup == null) return;
@@ -1635,10 +1594,6 @@ namespace StickyNotes__
             }
             NoteRichTextBox.Focus();
         }
-
-        #endregion
-
-        #region Persistent Formatting Toolbar (Heading, Code Block, Lists, Checkbox, Hyperlink)
 
         private static readonly Regex UrlRegex = new Regex(
             @"^(https?://[^\s]+|www\.[^\s]+\.[^\s]+)$", RegexOptions.IgnoreCase);
@@ -1787,8 +1742,6 @@ namespace StickyNotes__
             else
                 NoteRichTextBox.Document.Blocks.Add(divider);
 
-            // Insert a following empty paragraph so typing continues below the divider
-            // rather than inside the border-only one.
             var following = new Paragraph(new Run(""));
             NoteRichTextBox.Document.Blocks.InsertAfter(divider, following);
             NoteRichTextBox.CaretPosition = following.ContentStart;
@@ -1854,11 +1807,6 @@ namespace StickyNotes__
             NoteRichTextBox.Focus();
         }
 
-        // Checklist items are represented as a plain-text marker Run ("☐ "/"☑ ") followed by a
-        // content Run, rather than an embedded CheckBox control. WPF's TextRange serialization
-        // (both DataFormats.Xaml and XamlPackage) silently drops BlockUIContainer/UIElement content
-        // on save, so a "live" CheckBox would never survive a close/reopen round-trip. Plain Run
-        // text always round-trips correctly.
         private const string UncheckedGlyph = "☐ ";
         private const string CheckedGlyph = "☑ ";
 
@@ -1874,17 +1822,11 @@ namespace StickyNotes__
             else
                 NoteRichTextBox.Document.Blocks.Add(newParagraph);
 
-            // Select just the placeholder text (after the glyph) so typing replaces it.
             var textStart = run.ContentStart.GetPositionAtOffset(UncheckedGlyph.Length) ?? run.ContentStart;
             NoteRichTextBox.Selection.Select(textStart, run.ContentEnd);
             NoteRichTextBox.Focus();
         }
 
-        // WPF coalesces adjacent Runs with identical formatting into one Run during editing, so a
-        // checklist line is NOT guaranteed to keep its glyph in a separate Inline from the text
-        // that follows it. Instead, treat whichever Run starts the paragraph and begins with a
-        // glyph as "the" checklist run, and operate on it via substring rather than a dedicated
-        // marker object.
         private static Run? GetChecklistRun(Paragraph? paragraph)
         {
             if (paragraph?.Inlines.FirstInline is Run run &&
@@ -1902,7 +1844,6 @@ namespace StickyNotes__
             var checklistRun = GetChecklistRun(run.Parent as Paragraph);
             if (checklistRun != run) return null;
 
-            // Only toggle when the click actually lands within the glyph itself, not the text after it.
             var glyphEnd = run.ContentStart.GetPositionAtOffset(UncheckedGlyph.Length);
             if (glyphEnd == null || position.CompareTo(glyphEnd) > 0) return null;
 
@@ -1920,8 +1861,6 @@ namespace StickyNotes__
             checklistRun.TextDecorations = decoration;
             checklistRun.Foreground = foreground;
 
-            // In case the glyph and trailing text ever do end up as separate sibling Inlines
-            // (e.g. after further edits), keep their formatting in sync too.
             if (checklistRun.Parent is Paragraph paragraph)
             {
                 foreach (var inline in paragraph.Inlines)
@@ -2030,8 +1969,6 @@ namespace StickyNotes__
             var checklistRun = GetChecklistRun(paragraph);
             if (checklistRun == null || paragraph == null) return;
 
-            // Continue the checklist: pressing Enter on a checklist line adds a new
-            // unchecked item below instead of a plain paragraph break.
             e.Handled = true;
 
             var newParagraph = new Paragraph();
@@ -2044,7 +1981,6 @@ namespace StickyNotes__
 
         private void AutoDetectUrl(TextChangedEventArgs e)
         {
-            // Only react to a single plain character being typed (not paste/undo/large edits).
             if (e.Changes.Count != 1) return;
             var change = e.Changes.First();
             if (change.AddedLength != 1 || change.RemovedLength != 0) return;
@@ -2094,7 +2030,6 @@ namespace StickyNotes__
             }
             catch
             {
-                // Best-effort auto-formatting; ignore failures from unusual document shapes.
             }
             finally
             {
@@ -2149,10 +2084,6 @@ namespace StickyNotes__
             }
         }
 
-        // Some older/externally-built notes have text with a hardcoded black Foreground baked in
-        // (see BuildMeetingNoteXaml for why), which is unreadable against this app's dark note
-        // backgrounds. Repair it in place the moment the note is opened. Intentionally-colored
-        // text (hyperlinks, code blocks, highlights) is untouched since it's never plain black.
         private static void NormalizeForegroundIfBlack(Inline inline)
         {
             if (inline.Foreground is SolidColorBrush brush && brush.Color == Colors.Black)
@@ -2160,10 +2091,6 @@ namespace StickyNotes__
                 inline.Foreground = Brushes.White;
             }
         }
-
-        #endregion
-
-        // ── Wiki Backlinks ───────────────────────────────────────────────────
 
         private void ParseAndSaveWikiLinks(string plainText)
         {
@@ -2255,7 +2182,6 @@ namespace StickyNotes__
         {
             try
             {
-                // 1. Check for FileDrop (files copied from File Explorer)
                 if (Clipboard.ContainsFileDropList())
                 {
                     var files = Clipboard.GetFileDropList();
@@ -2271,7 +2197,6 @@ namespace StickyNotes__
                     }
                 }
 
-                // 2. Check for Image (screenshot or copied image)
                 if (Clipboard.ContainsImage())
                 {
                     var image = Clipboard.GetImage();
@@ -2288,8 +2213,7 @@ namespace StickyNotes__
                         }
 
                         AttachFiles(new[] { tempFilePath });
-                        
-                        // Clean up the temp file after attachment copy is done
+
                         try { File.Delete(tempFilePath); } catch {}
                         return true;
                     }

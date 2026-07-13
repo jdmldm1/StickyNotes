@@ -75,10 +75,6 @@ namespace StickyNotes__
                 model = model,
                 prompt = prompt,
                 stream = false,
-                // Smaller/faster models (e.g. llama3.2:1b) have a modest default context window,
-                // which can silently truncate long prompts (many notes) or cut the response off
-                // mid-JSON. Raising both caps here gives structured-output callers (Auto Organize,
-                // auto-tagging) enough headroom to actually finish.
                 options = new { num_predict = 4096, num_ctx = 8192 }
             };
 
@@ -118,9 +114,6 @@ namespace StickyNotes__
             return ParseJsonStringArray(response);
         }
 
-        // Shared by AutoTagTextAsync and any other caller expecting the model to return
-        // a plain JSON string array -- models frequently wrap it in markdown fences or
-        // add stray prose, so this strips down to just the [ ... ] before parsing.
         public static List<string> ParseJsonStringArray(string response)
         {
             if (string.IsNullOrEmpty(response))

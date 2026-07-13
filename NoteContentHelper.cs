@@ -8,10 +8,6 @@ using System.Windows.Navigation;
 
 namespace StickyNotes__
 {
-    // Centralizes how a note's rich FlowDocument content is serialized to/from the
-    // string stored in the database. DataFormats.XamlPackage (not plain Xaml) is
-    // required for embedded controls (e.g. checkbox list items) to round-trip --
-    // plain Xaml silently drops any BlockUIContainer content on save.
     public static class NoteContentHelper
     {
         public static string SaveRange(TextRange range)
@@ -34,7 +30,6 @@ namespace StickyNotes__
             }
             catch { }
 
-            // Legacy format from older builds / RTF import: plain-text Xaml (no embedded controls).
             try
             {
                 using var ms = new MemoryStream(Encoding.UTF8.GetBytes(content));
@@ -63,10 +58,6 @@ namespace StickyNotes__
             return list;
         }
 
-        /// <summary>
-        /// Extracts all [[Title]] wiki-link references from a plain-text string.
-        /// Returns the referenced titles (without the [[ ]] brackets).
-        /// </summary>
         public static List<string> ExtractWikiLinks(string plainText)
         {
             var results = new List<string>();
@@ -120,9 +111,6 @@ namespace StickyNotes__
             }
         }
 
-        // Shared by any window that hosts a live RichTextBox for a loaded note (NoteWindow,
-        // NoteManagerWindow): event handlers and hardcoded colors don't survive XAML
-        // (de)serialization, so hyperlinks and any baked-in black text need repairing after load.
         public static void RewireInteractiveElements(FlowDocument document, RequestNavigateEventHandler navigateHandler)
         {
             RewireBlocks(document.Blocks, navigateHandler);
@@ -178,9 +166,6 @@ namespace StickyNotes__
             }
         }
 
-        // Checklist items are plain-text Unicode glyphs (not embedded controls) because
-        // BlockUIContainer content doesn't survive TextRange.Save -- see NoteWindow's checklist
-        // handling for the original implementation this mirrors, shared here for NoteManagerWindow.
         public const string UncheckedGlyph = "☐ ";
         public const string CheckedGlyph = "☑ ";
 
@@ -201,7 +186,6 @@ namespace StickyNotes__
             var checklistRun = GetChecklistRun(run.Parent as Paragraph);
             if (checklistRun != run) return null;
 
-            // Only toggle when the click actually lands within the glyph itself, not the text after it.
             var glyphEnd = run.ContentStart.GetPositionAtOffset(UncheckedGlyph.Length);
             if (glyphEnd == null || position.CompareTo(glyphEnd) > 0) return null;
 
@@ -243,17 +227,14 @@ namespace StickyNotes__
             }
             catch { }
 
-            // Last-resort fallback for malformed/unrecognized content: strip tags from raw text.
             try
             {
                 string text = Regex.Replace(content, "<[^>]+>", "");
                 text = text.Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "\"");
                 return text.Trim();
             }
-            catch
-            {
-                return content;
-            }
+            catch { }
+            return content;
         }
     }
 }

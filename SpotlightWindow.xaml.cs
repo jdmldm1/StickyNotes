@@ -105,8 +105,6 @@ namespace StickyNotes__
                 _ => null
             };
 
-            // With no query and no filters active, an empty result list (rather than dumping
-            // every note) keeps this feeling like "search", not a full note browser.
             if (string.IsNullOrEmpty(query) && tagFilter == null && categoryFilter == null && updatedSince == null)
             {
                 ResultsListBox.ItemsSource = null;
@@ -130,8 +128,6 @@ namespace StickyNotes__
             }
         }
 
-        // Shows the words around the actual match (like a search engine result) instead of
-        // always the start of the note, so you can tell at a glance *why* a note matched.
         private static string BuildContextSnippet(string plainText, string query, int contextChars = 60)
         {
             if (string.IsNullOrEmpty(plainText)) return "";

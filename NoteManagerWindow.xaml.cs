@@ -13,13 +13,10 @@ using System.Threading.Tasks;
 
 namespace StickyNotes__
 {
-    // A OneNote-style browse/edit surface: colored category tabs on the left, a notes list in the
-    // middle, and a full rich-text editor on the right -- for reviewing and editing many notes in
-    // one bigger window instead of popping open each note's own small floating window.
     public partial class NoteManagerWindow : Window
     {
         private readonly MainWindow _owner;
-        private string? _selectedCategory; // null = All Notes, "__favorites__" = Favorites tab
+        private string? _selectedCategory;
         private Note? _currentNote;
         private bool _isLoadingNote;
         private readonly DispatcherTimer _saveTimer;
@@ -53,8 +50,6 @@ namespace StickyNotes__
             _owner.RefreshTagsFilter();
         }
 
-        #region Window Chrome
-
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ButtonState == MouseButtonState.Pressed) this.DragMove();
@@ -77,10 +72,6 @@ namespace StickyNotes__
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e) => this.Close();
-
-        #endregion
-
-        #region Category Tabs
 
         private static string ColorForCategory(string category)
         {
@@ -125,8 +116,6 @@ namespace StickyNotes__
 
             if (!categoryExists)
             {
-                // A category only exists in this app as a value on notes -- create a blank note
-                // so the new category actually has somewhere to show up and be selected.
                 int noteId = DatabaseHelper.CreateNote("", "", null, null, "yellow");
                 var note = DatabaseHelper.GetNote(noteId);
                 if (note != null)
@@ -199,10 +188,6 @@ namespace StickyNotes__
             RefreshCategoryTabs();
             RefreshNotesList();
         }
-
-        #endregion
-
-        #region Notes List
 
         private void ManagerSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshNotesList();
 
@@ -286,10 +271,6 @@ namespace StickyNotes__
             return fullPlainText.Substring(firstNewline + 1).TrimStart('\r', '\n', ' ', '\t');
         }
 
-        #endregion
-
-        #region Editor
-
         private void LoadNoteIntoEditor(int noteId)
         {
             if (_currentNote != null && _currentNote.Id != noteId)
@@ -309,7 +290,6 @@ namespace StickyNotes__
             ManagerRichTextBox.Visibility = Visibility.Visible;
             EditorFooterGrid.Visibility = Visibility.Visible;
 
-            // Chat is per-note context, so switching notes closes any chat left open for the last one.
             _isAiChatActive = false;
             AiChatPanel.Visibility = Visibility.Collapsed;
             ChatHistoryPanel.Children.Clear();
@@ -328,12 +308,6 @@ namespace StickyNotes__
                 }
             }
 
-            // The note's title is stored as the first line of its content (see SaveCurrentNote),
-            // so drop it from the body -- it's already shown, editable, in the title box above
-            // instead of being repeated inside the editor. Rich notes keep each line as its own
-            // Paragraph, so the whole first block can just be removed -- but legacy/plain-text
-            // notes can have the entire multi-line body squashed into one Paragraph/Run, in which
-            // case only the text up to the first line break should go, not the whole block.
             if (ManagerRichTextBox.Document.Blocks.FirstBlock is Paragraph firstParagraph)
             {
                 string firstParagraphText = new TextRange(firstParagraph.ContentStart, firstParagraph.ContentEnd).Text;
@@ -506,10 +480,6 @@ namespace StickyNotes__
 
             string title = EditorTitleBox.Text.Trim();
 
-            // The rest of the app stores a note's title as the first line of its content (see
-            // NoteWindow.SaveNoteContent), so temporarily prepend a title paragraph before
-            // serializing -- keeps the DB format consistent even though the editor here shows
-            // title and body as separate, non-duplicated areas.
             var titleParagraph = new Paragraph(new Run(title));
             if (ManagerRichTextBox.Document.Blocks.FirstBlock != null)
                 ManagerRichTextBox.Document.Blocks.InsertBefore(ManagerRichTextBox.Document.Blocks.FirstBlock, titleParagraph);
@@ -562,10 +532,6 @@ namespace StickyNotes__
                 e.Handled = true;
             }
         }
-
-        #endregion
-
-        #region AI Features (Quick Format + Chat)
 
         private void AiFormatButton_Click(object sender, RoutedEventArgs e)
         {
@@ -627,7 +593,6 @@ namespace StickyNotes__
             }
         }
 
-        // Unlike the options above, this appends to the note rather than replacing it.
         private async Task ExtractActionItemsAsync()
         {
             if (_currentNote == null) return;
@@ -791,10 +756,6 @@ namespace StickyNotes__
                 _typingBubble = null;
             }
         }
-
-        #endregion
-
-        #region Formatting Toolbar
 
         private void FormatBold_Click(object sender, RoutedEventArgs e)
         {
@@ -1092,7 +1053,5 @@ namespace StickyNotes__
 
             ManagerRichTextBox.Focus();
         }
-
-        #endregion
     }
 }

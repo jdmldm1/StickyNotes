@@ -26,7 +26,6 @@ namespace StickyNotes__
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            // Position fullscreen on primary monitor
             double screenWidth = SystemParameters.PrimaryScreenWidth;
             double screenHeight = SystemParameters.PrimaryScreenHeight;
 
@@ -38,7 +37,6 @@ namespace StickyNotes__
             DimOverlay.Width = screenWidth;
             DimOverlay.Height = screenHeight;
 
-            // Capture screen
             _screenBitmap = CaptureScreen(0, 0, (int)screenWidth, (int)screenHeight);
             BackgroundImage.Source = _screenBitmap;
         }
@@ -60,7 +58,6 @@ namespace StickyNotes__
                 BitmapSizeOptions.FromEmptyOptions()
             );
 
-            // Clean up GDI objects
             Win32Helper.DeleteDC(hdcMem);
             Win32Helper.DeleteObject(hBitmap);
             Win32Helper.ReleaseDC(IntPtr.Zero, hdcScreen);
@@ -91,13 +88,11 @@ namespace StickyNotes__
                 double width = Math.Max(1, Math.Abs(_startPoint.X - currentPoint.X));
                 double height = Math.Max(1, Math.Abs(_startPoint.Y - currentPoint.Y));
 
-                // Position selection border
                 Canvas.SetLeft(SelectionBorder, x);
                 Canvas.SetTop(SelectionBorder, y);
                 SelectionBorder.Width = width;
                 SelectionBorder.Height = height;
 
-                // Crop & position image cut-out overlay
                 try
                 {
                     var rect = new Int32Rect((int)x, (int)y, (int)width, (int)height);
@@ -109,7 +104,6 @@ namespace StickyNotes__
                 }
                 catch
                 {
-                    // Ignore crops that exceed bounds
                 }
             }
         }
@@ -133,7 +127,6 @@ namespace StickyNotes__
                         var rect = new Int32Rect((int)x, (int)y, (int)width, (int)height);
                         var croppedBmp = new CroppedBitmap(_screenBitmap, rect);
 
-                        // Save to images directory
                         string filename = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 6)}.png";
                         string filepath = System.IO.Path.Combine(AppConfig.ImagesDir, filename);
                         using (var fileStream = new FileStream(filepath, FileMode.Create))

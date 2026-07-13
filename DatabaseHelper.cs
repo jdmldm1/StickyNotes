@@ -14,9 +14,6 @@ namespace StickyNotes__
     {
         public static readonly string AppName = "StickyNotesPlus";
 
-        // This default folder never moves -- it's where a small pointer file lives that records
-        // where the *real* data folder is, so a relocated data dir (e.g. onto a second drive) can
-        // still be found on the next launch without touching the registry or an install path.
         public static readonly string DefaultAppDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName);
         public static readonly string LocationPointerPath = Path.Combine(DefaultAppDir, "datalocation.txt");
 
@@ -51,10 +48,6 @@ namespace StickyNotes__
             return DefaultAppDir;
         }
 
-        // Copies the current data folder (db, images, attachments, settings) to newDir, points
-        // future launches at it via the pointer file, then removes the old folder's contents.
-        // Callers are responsible for restarting the app afterward -- AppDir et al. are
-        // static readonly and were already resolved at startup.
         public static void RelocateDataDirectory(string newDir)
         {
             string oldDir = AppDir;
@@ -71,7 +64,7 @@ namespace StickyNotes__
             {
                 Directory.Delete(oldDir, true);
             }
-            catch { /* Best-effort -- the copy already succeeded, so a locked leftover file here isn't critical. */ }
+            catch { }
         }
 
         private static void CopyDirectoryRecursive(string sourceDir, string destDir)
@@ -149,8 +142,7 @@ namespace StickyNotes__
             {
                 conn.Open();
                 var cmd = conn.CreateCommand();
-                
-                // Create notes table
+
                 cmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS notes (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,7 +163,6 @@ namespace StickyNotes__
                 ";
                 cmd.ExecuteNonQuery();
 
-                // Create tags table
                 cmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS tags (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,7 +171,6 @@ namespace StickyNotes__
                 ";
                 cmd.ExecuteNonQuery();
 
-                // Create note_tags association table
                 cmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS note_tags (
                         note_id INTEGER,
@@ -192,9 +182,8 @@ namespace StickyNotes__
                 ";
                 cmd.ExecuteNonQuery();
 
-                // Create trigger to auto update updated_at timestamp
                 cmd.CommandText = @"
-                    CREATE TRIGGER IF NOT EXISTS update_note_timestamp 
+                    CREATE TRIGGER IF NOT EXISTS update_note_timestamp
                     AFTER UPDATE ON notes
                     BEGIN
                         UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = new.id;
@@ -202,7 +191,6 @@ namespace StickyNotes__
                 ";
                 cmd.ExecuteNonQuery();
 
-                // Create note_history table
                 cmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS note_history (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,7 +202,6 @@ namespace StickyNotes__
                 ";
                 cmd.ExecuteNonQuery();
 
-                // Create note_connections table
                 cmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS note_connections (
                         from_note_id INTEGER,
@@ -226,7 +213,6 @@ namespace StickyNotes__
                 ";
                 cmd.ExecuteNonQuery();
 
-                // Create note_attachments table (arbitrary files/documents dropped or attached to a note)
                 cmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS note_attachments (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -262,11 +248,6 @@ namespace StickyNotes__
 
                 try
                 {
-                    // Searchable plain-text mirror of `content`. Content is stored as Base64-encoded
-                    // XamlPackage (needed so embedded formatting round-trips correctly), which makes
-                    // a plain SQL LIKE against it useless for finding words in a note's body -- this
-                    // column is what search actually matches against, kept in sync by
-                    // CreateNote/UpdateNote.
                     cmd.CommandText = "ALTER TABLE notes ADD COLUMN plain_text TEXT;";
                     cmd.ExecuteNonQuery();
                 }
@@ -305,10 +286,8 @@ namespace StickyNotes__
                 }
                 catch {}
 
-                // One-time cleanup: scrub any \id=... metadata tags from previously imported notes
                 CleanupStickyNotesMetadataInDb(conn);
 
-                // Backfill plain_text for notes saved before that column existed.
                 BackfillPlainText(conn);
             }
         }
@@ -338,14 +317,13 @@ namespace StickyNotes__
                     updateCmd.ExecuteNonQuery();
                 }
             }
-            catch { /* Non-critical -- search just falls back to title/OCR matches for these rows */ }
+            catch { }
         }
 
         private static void CleanupStickyNotesMetadataInDb(Microsoft.Data.Sqlite.SqliteConnection conn)
         {
             try
             {
-                // Fetch notes whose title or content contains a \id= marker
                 var checkCmd = conn.CreateCommand();
                 checkCmd.CommandText = "SELECT id, title, content FROM notes WHERE title LIKE '%\\id=%' OR content LIKE '%\\id=%' OR title LIKE '%\\np=%' OR title LIKE '%\\li=%';";
                 var toClean = new System.Collections.Generic.List<(int id, string title, string content)>();
@@ -378,7 +356,7 @@ namespace StickyNotes__
                     upd.ExecuteNonQuery();
                 }
             }
-            catch { /* Non-critical — don't crash startup */ }
+            catch { }
         }
 
         public static int CreateNote(string title = "", string content = "", string? imagePath = null, string? ocrText = null, string color = "yellow")
@@ -461,15 +439,12 @@ namespace StickyNotes__
                 cmd.Parameters.AddWithValue("$id", id);
                 cmd.ExecuteNonQuery();
 
-                // Clean up any tags that were only used by the note we just deleted.
                 var cleanupCmd = conn.CreateCommand();
                 cleanupCmd.CommandText = "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags);";
                 cleanupCmd.ExecuteNonQuery();
             }
         }
 
-        // Deletes every note and all related data (tags, history, connections, attachments) and
-        // their backing files on disk. Used by the "Clear All Notes" option in Settings.
         public static void ClearAllNotes()
         {
             var attachmentPaths = new List<string>();
@@ -557,9 +532,6 @@ namespace StickyNotes__
 
                 if (!string.IsNullOrEmpty(searchQuery))
                 {
-                    // plain_text is a searchable mirror of `content` (which is Base64-encoded
-                    // XamlPackage and not itself searchable) kept in sync by CreateNote/UpdateNote.
-                    // Also search the ocr_text of any attachments associated with the note.
                     conditions.Add("(n.title LIKE $search OR n.plain_text LIKE $search OR n.ocr_text LIKE $search OR n.id IN (SELECT note_id FROM note_attachments WHERE ocr_text LIKE $search))");
                     cmd.Parameters.AddWithValue("$search", $"%{searchQuery}%");
                 }
@@ -606,21 +578,18 @@ namespace StickyNotes__
                 var transaction = conn.BeginTransaction();
                 try
                 {
-                    // Ensure tag exists
                     var cmd = conn.CreateCommand();
                     cmd.Transaction = transaction;
                     cmd.CommandText = "INSERT OR IGNORE INTO tags (name) VALUES ($name);";
                     cmd.Parameters.AddWithValue("$name", tagName);
                     cmd.ExecuteNonQuery();
 
-                    // Get tag ID
                     cmd = conn.CreateCommand();
                     cmd.Transaction = transaction;
                     cmd.CommandText = "SELECT id FROM tags WHERE name = $name;";
                     cmd.Parameters.AddWithValue("$name", tagName);
                     int tagId = Convert.ToInt32(cmd.ExecuteScalar());
 
-                    // Associate note and tag
                     cmd = conn.CreateCommand();
                     cmd.Transaction = transaction;
                     cmd.CommandText = "INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES ($noteId, $tagId);";
@@ -646,14 +615,13 @@ namespace StickyNotes__
                 conn.Open();
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    DELETE FROM note_tags 
+                    DELETE FROM note_tags
                     WHERE note_id = $noteId AND tag_id = (SELECT id FROM tags WHERE name = $name);
                 ";
                 cmd.Parameters.AddWithValue("$noteId", noteId);
                 cmd.Parameters.AddWithValue("$name", tagName);
                 cmd.ExecuteNonQuery();
 
-                // Clean up orphan tags
                 cmd = conn.CreateCommand();
                 cmd.CommandText = "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags);";
                 cmd.ExecuteNonQuery();
@@ -710,9 +678,6 @@ namespace StickyNotes__
             return tags;
         }
 
-        /// <summary>
-        /// Returns all note tags grouped by note ID. One query instead of N queries in RefreshNotesList.
-        /// </summary>
         public static Dictionary<int, List<string>> GetAllNoteTagsMap()
         {
             var map = new Dictionary<int, List<string>>();
@@ -739,9 +704,6 @@ namespace StickyNotes__
             return map;
         }
 
-        /// <summary>
-        /// Returns all attachments grouped by note ID. One query instead of N queries.
-        /// </summary>
         public static Dictionary<int, List<NoteAttachment>> GetAllNoteAttachmentsMap()
         {
             var map = new Dictionary<int, List<NoteAttachment>>();
@@ -771,10 +733,6 @@ namespace StickyNotes__
             return map;
         }
 
-        /// <summary>
-        /// Returns all (NoteId, NoteTitle, NoteColor, TagName) tuples in a single query.
-        /// Used by GraphWindow to build the tag graph without N+1 queries.
-        /// </summary>
         public static List<(int NoteId, string NoteTitle, string NoteColor, string TagName)> GetAllNoteTagPairs()
         {
             var result = new List<(int, string, string, string)>();
@@ -797,7 +755,6 @@ namespace StickyNotes__
             return result;
         }
 
-        /// <summary>Finds a note by exact title match (case-insensitive). Returns null if not found.</summary>
         public static Note? GetNoteByTitle(string title)
         {
             using (var conn = new SqliteConnection(GetConnectionString()))
@@ -814,10 +771,6 @@ namespace StickyNotes__
             return null;
         }
 
-        /// <summary>
-        /// Returns all notes that have an explicit connection to/from the given noteId.
-        /// Used by NoteWindow's Backlinks panel.
-        /// </summary>
         public static List<Note> GetBacklinks(int noteId)
         {
             var notes = new List<Note>();
@@ -841,7 +794,6 @@ namespace StickyNotes__
             return notes;
         }
 
-        /// <summary>Marks or unmarks a note as a reusable template.</summary>
         public static void SetNoteIsTemplate(int noteId, bool isTemplate)
         {
             using (var conn = new SqliteConnection(GetConnectionString()))
@@ -855,7 +807,6 @@ namespace StickyNotes__
             }
         }
 
-        /// <summary>Returns all notes marked as user-defined templates.</summary>
         public static List<Note> ListTemplates()
         {
             var notes = new List<Note>();
@@ -872,14 +823,12 @@ namespace StickyNotes__
             return notes;
         }
 
-        #region Note History & Connections Queries
-
         public static void AddNoteHistoryEntry(int noteId, string content)
         {
             using (var conn = new SqliteConnection(GetConnectionString()))
             {
                 conn.Open();
-                
+
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     INSERT INTO note_history (note_id, content)
@@ -891,10 +840,10 @@ namespace StickyNotes__
 
                 var cleanupCmd = conn.CreateCommand();
                 cleanupCmd.CommandText = @"
-                    DELETE FROM note_history 
+                    DELETE FROM note_history
                     WHERE note_id = $note_id AND id NOT IN (
-                        SELECT id FROM note_history 
-                        WHERE note_id = $note_id 
+                        SELECT id FROM note_history
+                        WHERE note_id = $note_id
                         ORDER BY versioned_at DESC LIMIT 10
                     );
                 ";
@@ -911,9 +860,9 @@ namespace StickyNotes__
                 conn.Open();
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    SELECT id, note_id, content, versioned_at 
-                    FROM note_history 
-                    WHERE note_id = $note_id 
+                    SELECT id, note_id, content, versioned_at
+                    FROM note_history
+                    WHERE note_id = $note_id
                     ORDER BY versioned_at DESC;
                 ";
                 cmd.Parameters.AddWithValue("$note_id", noteId);
@@ -957,8 +906,8 @@ namespace StickyNotes__
                 conn.Open();
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    DELETE FROM note_connections 
-                    WHERE (from_note_id = $from AND to_note_id = $to) 
+                    DELETE FROM note_connections
+                    WHERE (from_note_id = $from AND to_note_id = $to)
                        OR (from_note_id = $to AND to_note_id = $from);
                 ";
                 cmd.Parameters.AddWithValue("$from", fromNoteId);
@@ -990,10 +939,6 @@ namespace StickyNotes__
             return list;
         }
 
-        #endregion
-
-        #region Note Attachments
-
         public static NoteAttachment AddAttachment(int noteId, string sourceFilePath)
         {
             string fileName = Path.GetFileName(sourceFilePath);
@@ -1024,7 +969,7 @@ namespace StickyNotes__
             string fileName = Path.GetFileName(sourceFilePath);
             string storedFileName = $"{noteId}_{Guid.NewGuid():N}_{fileName}";
             string storedPath = Path.Combine(AppConfig.AttachmentsDir, storedFileName);
-            
+
             await Task.Run(() => File.Copy(sourceFilePath, storedPath, overwrite: true));
 
             string? ocrText = null;
@@ -1114,8 +1059,6 @@ namespace StickyNotes__
             }
         }
 
-        #endregion
-
         private static Note ReadNote(SqliteDataReader reader)
         {
             return new Note
@@ -1204,7 +1147,6 @@ namespace StickyNotes__
                 cmd.Parameters.AddWithValue("$noteId", noteId);
                 cmd.ExecuteNonQuery();
 
-                // Clean up orphan tags
                 cmd = conn.CreateCommand();
                 cmd.CommandText = "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM note_tags);";
                 cmd.ExecuteNonQuery();
@@ -1239,8 +1181,6 @@ namespace StickyNotes__
             {
                 conn.Open();
 
-                // Probe for which columns actually exist in the Note table
-                // (Microsoft has changed the schema across app versions)
                 var probeCmd = conn.CreateCommand();
                 probeCmd.CommandText = "PRAGMA table_info(Note);";
                 var existingColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1248,7 +1188,6 @@ namespace StickyNotes__
                 {
                     while (probeReader.Read())
                     {
-                        // Column 1 in PRAGMA table_info is 'name'
                         string colName = probeReader.IsDBNull(1) ? "" : probeReader.GetString(1);
                         if (!string.IsNullOrEmpty(colName))
                             existingColumns.Add(colName);
@@ -1257,7 +1196,6 @@ namespace StickyNotes__
 
                 if (existingColumns.Count == 0)
                 {
-                    // Table might not exist; nothing to import
                     return 0;
                 }
 
@@ -1265,14 +1203,12 @@ namespace StickyNotes__
                 bool hasText  = existingColumns.Contains("Text");
                 bool hasIsDeleted = existingColumns.Contains("IsDeleted");
 
-                if (!hasText) return 0; // Can't import without text column
+                if (!hasText) return 0;
 
-                // Build SELECT dynamically based on available columns
                 string selectSql = hasColor
                     ? "SELECT Text, Color FROM Note"
                     : "SELECT Text FROM Note";
 
-                // Exclude deleted notes if the column exists
                 if (hasIsDeleted)
                     selectSql += " WHERE IsDeleted = 0 OR IsDeleted IS NULL";
 
@@ -1294,7 +1230,6 @@ namespace StickyNotes__
 
                             if (string.IsNullOrWhiteSpace(rtfText)) continue;
 
-                            // Strip internal Microsoft Sticky Notes metadata tags (\id=..., \np=..., etc.)
                             rtfText = StripStickyNotesMetadata(rtfText);
 
                             string xamlContent = ConvertRtfToXaml(rtfText);
@@ -1315,7 +1250,6 @@ namespace StickyNotes__
                         }
                         catch (Exception ex)
                         {
-                            // Skip notes that fail individually rather than aborting the whole import
                             Console.WriteLine($"Skipping note during import: {ex.Message}");
                         }
                     }
@@ -1337,9 +1271,6 @@ namespace StickyNotes__
         {
             if (string.IsNullOrEmpty(text)) return text;
 
-            // Microsoft Sticky Notes stores internal metadata inline in the Text field
-            // as \key=value pairs, e.g.: \id=04d88de6-2bef-4db9-a8d9-ad351625a2d3
-            // Known keys: id, np, li, wi, ts, bidi, lnspc
             text = System.Text.RegularExpressions.Regex.Replace(
                 text,
                 @"\\(?:id|np|li|wi|ts|bidi|lnspc)=[^\s\\]*\s?",
@@ -1354,7 +1285,7 @@ namespace StickyNotes__
             try
             {
                 if (string.IsNullOrEmpty(rtf)) return "";
-                
+
                 if (!rtf.TrimStart().StartsWith("{\\rtf"))
                 {
                     var p = new Paragraph(new Run(rtf));
@@ -1368,7 +1299,7 @@ namespace StickyNotes__
                 {
                     range.Load(ms, DataFormats.Rtf);
                 }
-                
+
                 using (var msOut = new MemoryStream())
                 {
                     var rangeOut = new TextRange(tempDoc.ContentStart, tempDoc.ContentEnd);

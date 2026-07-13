@@ -34,7 +34,6 @@ namespace StickyNotes__
         {
             TemplatesPanel.Children.Clear();
 
-            // Built-in templates
             var builtIns = new[]
             {
                 ("\ud83d\udcc4", "Blank Note",     "yellow"),
@@ -48,7 +47,6 @@ namespace StickyNotes__
             foreach (var (icon, name, color) in builtIns)
                 TemplatesPanel.Children.Add(BuildTemplateCard(icon, name, color, null));
 
-            // User-defined templates from DB
             var userTemplates = DatabaseHelper.ListTemplates();
             foreach (var note in userTemplates)
             {
@@ -100,7 +98,6 @@ namespace StickyNotes__
 
             grid.Children.Add(card);
 
-            // Delete button for user templates
             if (noteId.HasValue)
             {
                 var delBtn = new Button

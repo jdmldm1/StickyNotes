@@ -6,7 +6,6 @@ namespace StickyNotes__
 {
     public static class Win32Helper
     {
-        // AppBar API
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
         {
@@ -41,13 +40,9 @@ namespace StickyNotes__
         [DllImport("shell32.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern IntPtr SHAppBarMessage(int dwMessage, ref APPBARDATA pData);
 
-        // Increments every time the clipboard's content actually changes -- the only reliable way
-        // to detect "is this really new" for images, since Clipboard.GetImage() hands back a fresh
-        // BitmapSource instance on every call even when the underlying content hasn't changed.
         [DllImport("user32.dll")]
         public static extern int GetClipboardSequenceNumber();
 
-        // Window styling & position
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
@@ -73,7 +68,6 @@ namespace StickyNotes__
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-        // DWM Backdrop (Mica / Dark Mode)
         [DllImport("dwmapi.dll")]
         public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
@@ -91,7 +85,6 @@ namespace StickyNotes__
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetCursorPos(out POINT lpPoint);
 
-        // Hotkeys
         [DllImport("user32.dll")]
         public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 
@@ -104,8 +97,6 @@ namespace StickyNotes__
         public const uint MOD_WIN = 0x0008;
         public const uint MOD_NOREPEAT = 0x4000;
 
-        // Named hotkey IDs — used in both RegisterHotKey and WndProcHook.
-        // Changing an ID here automatically updates both registration and dispatch.
         public const int HotkeyNewNote      = 9001;
         public const int HotkeyScreenshot   = 9002;
         public const int HotkeySpotlight    = 9003;
@@ -113,8 +104,8 @@ namespace StickyNotes__
         public const int HotkeySaveFiles    = 9005;
         public const int HotkeyMeetingNote  = 9006;
         public const int HotkeyQuickCapture = 9007;
-        public const int HotkeyGraph        = 9008; // Win+Alt+G — Tag Mind Graph
-        public const int HotkeyToggleSidebar = 9009; // Win+Alt+Z — Show/Hide Sidebar
+        public const int HotkeyGraph        = 9008;
+        public const int HotkeyToggleSidebar = 9009;
         
         public static void EnableMica(IntPtr hwnd, bool darkMode)
         {
@@ -122,8 +113,8 @@ namespace StickyNotes__
             {
                 int darkValue = darkMode ? 1 : 0;
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkValue, sizeof(int));
-                
-                int backdropType = 2; // Mica backdrop type
+
+                int backdropType = 2;
                 DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, sizeof(int));
             }
             catch (Exception ex)
@@ -132,7 +123,6 @@ namespace StickyNotes__
             }
         }
 
-        // GDI Screen Capture -- used by CaptureWindow to BitBlt the screen into a bitmap.
         [DllImport("gdi32.dll")]
         public static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
 

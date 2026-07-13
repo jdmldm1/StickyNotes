@@ -19,16 +19,13 @@ namespace StickyNotes__
 
             try
             {
-                // Open storage file via WinRT
                 StorageFile file = await StorageFile.GetFileFromPathAsync(imagePath);
-                
+
                 using (IRandomAccessStream stream = await file.OpenAsync(FileAccessMode.Read))
                 {
-                    // Decode image
                     BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
                     SoftwareBitmap bitmap = await decoder.GetSoftwareBitmapAsync();
 
-                    // Create OCR Engine
                     OcrEngine engine = OcrEngine.TryCreateFromUserProfileLanguages();
                     if (engine == null)
                     {
@@ -36,11 +33,9 @@ namespace StickyNotes__
                         return ("", new List<string>());
                     }
 
-                    // Run recognition
                     OcrResult result = await engine.RecognizeAsync(bitmap);
                     string text = result.Text;
 
-                    // Generate tags
                     List<string> tags = AutoTagText(text);
 
                     return (text, tags);
@@ -60,19 +55,16 @@ namespace StickyNotes__
             if (string.IsNullOrEmpty(text))
                 return new List<string>();
 
-            // 1. Look for URLs
             if (Regex.IsMatch(text, @"https?://[^\s/$.?#].[^\s]*", RegexOptions.IgnoreCase))
             {
                 tags.Add("link");
             }
 
-            // 2. Look for Emails
             if (Regex.IsMatch(text, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"))
             {
                 tags.Add("contact");
             }
 
-            // 3. Look for Jira issue keys (e.g. PROJ-1234)
             var jiraMatches = Regex.Matches(text, @"\b([A-Z]{2,10})-\d+\b");
             foreach (Match match in jiraMatches)
             {
@@ -80,7 +72,6 @@ namespace StickyNotes__
                 tags.Add("task");
             }
 
-            // 4. Common keywords
             var keywords = new Dictionary<string, string[]>
             {
                 { "error", new[] { "error", "exception", "failed", "crash", "bug" } },

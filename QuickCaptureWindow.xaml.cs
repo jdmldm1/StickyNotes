@@ -7,9 +7,6 @@ using System.Windows.Threading;
 
 namespace StickyNotes__
 {
-    // A single-line, no-window-management capture box: press the hotkey, type a thought,
-    // hit Enter, it's filed as a note instantly. No note window ever has to be positioned,
-    // found, or closed for a quick thought to get captured.
     public partial class QuickCaptureWindow : Window
     {
         private readonly MainWindow _mainWnd;
@@ -72,8 +69,6 @@ namespace StickyNotes__
             _mainWnd.RefreshNotesList();
             _mainWnd.RefreshTagsFilter();
 
-            // Flash a brief confirmation instead of just vanishing, so it's clear the note
-            // was actually saved even though no note window ever appeared.
             CaptureInput.IsEnabled = false;
             CaptureInput.Text = "Saved!";
             StatusIcon.Text = "✓";
@@ -86,8 +81,6 @@ namespace StickyNotes__
             var paragraph = new Paragraph(new Run(text));
             var document = new FlowDocument(paragraph)
             {
-                // Standalone FlowDocument -- see BuildMeetingNoteXaml in MainWindow.xaml.cs for why
-                // Foreground/FontFamily must be set explicitly here.
                 Foreground = Brushes.White,
                 FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, sans-serif")
             };

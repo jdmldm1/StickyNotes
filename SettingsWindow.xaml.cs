@@ -333,7 +333,6 @@ namespace StickyNotes__
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
-            // Restore original opacity on cancel
             if (Owner is MainWindow main)
                 main.ApplySidebarOpacity(_originalOpacity);
 
@@ -349,7 +348,6 @@ namespace StickyNotes__
 
             try
             {
-                // 1. Verify Docker is running
                 int dockerCheck = await RunShellCommandAsync("docker", "info");
                 if (dockerCheck != 0)
                 {
@@ -359,12 +357,10 @@ namespace StickyNotes__
                     return;
                 }
 
-                // 2. Check if Ollama container exists
                 SetupStatusTextBlock.Text = "Starting Ollama container...";
                 int startResult = await RunShellCommandAsync("docker", "start ollama");
                 if (startResult != 0)
                 {
-                    // Container doesn't exist, create it
                     SetupStatusTextBlock.Text = "Creating and downloading Ollama container...";
                     int runResult = await RunShellCommandAsync("docker", "run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama");
                     if (runResult != 0)
@@ -376,7 +372,6 @@ namespace StickyNotes__
                     }
                 }
 
-                // 3. Wait for Ollama service to respond
                 SetupStatusTextBlock.Text = "Waiting for Ollama service to start up...";
                 bool isRunning = false;
                 using (var client = new HttpClient())

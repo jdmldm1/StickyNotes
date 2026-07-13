@@ -4,16 +4,11 @@ using System.Text.Json;
 
 namespace StickyNotes__
 {
-    /// <summary>
-    /// Singleton settings cache. Reads settings.json once and exposes typed properties.
-    /// Call Invalidate() after saving settings to force a reload on next access.
-    /// </summary>
     public static class SettingsService
     {
         private static AppConfigData? _cache;
         private static readonly object _lock = new();
 
-        /// <summary>Gets the current cached settings, loading from disk if not yet cached.</summary>
         public static AppConfigData Current
         {
             get
@@ -27,10 +22,8 @@ namespace StickyNotes__
             }
         }
 
-        /// <summary>Clears the cache so the next access re-reads from disk.</summary>
         public static void Invalidate() => _cache = null;
 
-        /// <summary>Saves the given config to disk and invalidates the cache.</summary>
         public static void Save(AppConfigData config)
         {
             try

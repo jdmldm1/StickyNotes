@@ -27,9 +27,8 @@ namespace StickyNotes__
             {
                 string line = lines[i];
                 string trimmed = line.TrimStart();
-                int lineIndex = i; // Capture index for the event closure
+                int lineIndex = i;
 
-                // 1. Headers
                 if (trimmed.StartsWith("# "))
                 {
                     var p = new Paragraph { Margin = new Thickness(0, 10, 0, 5) };
@@ -51,7 +50,6 @@ namespace StickyNotes__
                     p.Inlines.Add(run);
                     doc.Blocks.Add(p);
                 }
-                // 2. Checkboxes / Task lists: - [ ] or - [x]
                 else if (trimmed.StartsWith("- [ ] ") || trimmed.StartsWith("- [x] ") ||
                          trimmed.StartsWith("* [ ] ") || trimmed.StartsWith("* [x] "))
                 {
@@ -59,8 +57,7 @@ namespace StickyNotes__
                     string contentText = trimmed.Substring(6);
 
                     var p = new Paragraph { Margin = new Thickness(10, 2, 0, 2) };
-                    
-                    // Checkbox Control
+
                     var cb = new CheckBox
                     {
                         IsChecked = isChecked,
@@ -73,8 +70,7 @@ namespace StickyNotes__
                     cb.Unchecked += (s, e) => onTaskChanged(lineIndex, false);
 
                     p.Inlines.Add(new InlineUIContainer(cb));
-                    
-                    // Inline Text
+
                     var textRun = new Run(contentText);
                     if (isChecked)
                     {
@@ -84,7 +80,6 @@ namespace StickyNotes__
                     p.Inlines.Add(textRun);
                     doc.Blocks.Add(p);
                 }
-                // 3. Bullet list: - or *
                 else if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
                 {
                     var p = new Paragraph { Margin = new Thickness(15, 2, 0, 2) };
@@ -93,7 +88,6 @@ namespace StickyNotes__
                         p.Inlines.Add(inline);
                     doc.Blocks.Add(p);
                 }
-                // 4. Code Blocks
                 else if (trimmed.StartsWith("```"))
                 {
                     var codeBuilder = new System.Text.StringBuilder();
@@ -127,12 +121,11 @@ namespace StickyNotes__
                     };
 
                     border.Child = tb;
-                    
+
                     var p = new Paragraph();
                     p.Inlines.Add(new InlineUIContainer(border));
                     doc.Blocks.Add(p);
                 }
-                // 5. General text block
                 else
                 {
                     if (string.IsNullOrWhiteSpace(line))
@@ -152,9 +145,6 @@ namespace StickyNotes__
             return doc;
         }
 
-        /// <summary>
-        /// Splits a text line into WPF Inline elements, handling **bold**, *italic*, and `code` markers.
-        /// </summary>
         private static IEnumerable<System.Windows.Documents.Inline> ParseInlineRuns(string text)
         {
             var pattern = new System.Text.RegularExpressions.Regex(@"(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)" );

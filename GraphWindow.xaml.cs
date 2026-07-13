@@ -14,16 +14,13 @@ namespace StickyNotes__
     {
         private readonly MainWindow _mainWnd;
 
-        // Graph model
         private readonly List<GraphNode> _nodes = new();
         private readonly List<GraphEdge> _edges = new();
 
-        // Canvas interaction
         private Point _panStart;
         private bool _isPanning;
         private string? _highlightedTag;
 
-        // Node colors mapped from note color names
         private static readonly Dictionary<string, Color> NoteColorMap = new()
         {
             { "yellow",  Color.FromRgb(0xD4, 0x9A, 0x13) },
@@ -66,7 +63,6 @@ namespace StickyNotes__
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            // Nothing to flush
         }
 
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -78,8 +74,6 @@ namespace StickyNotes__
         private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
             WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
-
-        // ── Graph build ────────────────────────────────────────────────────────
 
         private void BuildGraph()
         {
@@ -96,7 +90,6 @@ namespace StickyNotes__
                 return;
             }
 
-            // Build per-note tag sets
             var noteInfo = new Dictionary<int, (string Title, string Color)>();
             var noteTags = new Dictionary<int, HashSet<string>>();
             foreach (var (noteId, title, color, tag) in pairs)
@@ -106,7 +99,6 @@ namespace StickyNotes__
                 noteTags[noteId].Add(tag);
             }
 
-            // Create nodes (only notes with ≥1 tag)
             var rand = new Random(42);
             double cx = GraphCanvasBorder.ActualWidth > 0 ? GraphCanvasBorder.ActualWidth / 2 : 400;
             double cy = GraphCanvasBorder.ActualHeight > 0 ? GraphCanvasBorder.ActualHeight / 2 : 300;
@@ -122,7 +114,6 @@ namespace StickyNotes__
                 });
             }
 
-            // Create edges for pairs sharing ≥1 tag
             var nodeById = _nodes.ToDictionary(n => n.NoteId);
             for (int i = 0; i < _nodes.Count; i++)
             for (int j = i + 1; j < _nodes.Count; j++)
@@ -135,14 +126,12 @@ namespace StickyNotes__
                     _edges.Add(new GraphEdge { A = a, B = b, SharedTags = shared });
             }
 
-            // Collect all tags for legend
             var allTags = noteTags.Values.SelectMany(s => s).Distinct().OrderBy(t => t).ToList();
             BuildTagLegend(allTags);
 
             double width = GraphCanvasBorder.ActualWidth > 0 ? GraphCanvasBorder.ActualWidth : 960;
             double height = GraphCanvasBorder.ActualHeight > 0 ? GraphCanvasBorder.ActualHeight : 560;
 
-            // Assign initial positions via force-directed layout (run async so window renders first)
             Task.Run(() => RunForceLayout(width, height)).ContinueWith(_ =>
                 Dispatcher.Invoke(() => RenderGraph()), TaskScheduler.Default);
 
@@ -197,20 +186,17 @@ namespace StickyNotes__
             }
         }
 
-        // ── Force-directed layout (Fruchterman-Reingold) ─────────────────────
-
         private void RunForceLayout(double width, double height)
         {
             if (_nodes.Count == 0) return;
 
             const int iterations = 100;
-            double k = Math.Max(140.0, Math.Sqrt((width * height) / _nodes.Count) * 0.9); // Dynamic spring length
+            double k = Math.Max(140.0, Math.Sqrt((width * height) / _nodes.Count) * 0.9);
             double temp = width / 8.0;
             double cooling = temp / (iterations + 1);
 
             for (int iter = 0; iter < iterations; iter++)
             {
-                // Repulsion
                 var disps = new (double dx, double dy)[_nodes.Count];
                 for (int i = 0; i < _nodes.Count; i++)
                 for (int j = 0; j < _nodes.Count; j++)
@@ -220,12 +206,11 @@ namespace StickyNotes__
                     double dy = _nodes[i].Y - _nodes[j].Y;
                     double dist = Math.Max(1.0, Math.Sqrt(dx * dx + dy * dy));
                     double force = (k * k) / dist;
-                    if (dist < 120) force *= 1.8; // Give an extra repulsive push to nearby nodes to prevent label overlap
+                    if (dist < 120) force *= 1.8;
                     disps[i].dx += (dx / dist) * force;
                     disps[i].dy += (dy / dist) * force;
                 }
 
-                // Attraction along edges
                 foreach (var edge in _edges)
                 {
                     int ai = _nodes.IndexOf(edge.A);
@@ -242,7 +227,6 @@ namespace StickyNotes__
                     disps[bi].dy += fy;
                 }
 
-                // Gravity toward center
                 for (int i = 0; i < _nodes.Count; i++)
                 {
                     double dx = _nodes[i].X - width / 2;
@@ -251,7 +235,6 @@ namespace StickyNotes__
                     disps[i].dy -= dy * 0.015;
                 }
 
-                // Apply displacements with temperature cap
                 for (int i = 0; i < _nodes.Count; i++)
                 {
                     double dmag = Math.Max(0.1, Math.Sqrt(disps[i].dx * disps[i].dx + disps[i].dy * disps[i].dy));
@@ -265,15 +248,12 @@ namespace StickyNotes__
             }
         }
 
-        // ── Render ─────────────────────────────────────────────────────────────
-
         private void RenderGraph()
         {
             if (GraphCanvas == null || ShowLabelsCheck == null) return;
             GraphCanvas.Children.Clear();
             bool showLabels = ShowLabelsCheck.IsChecked == true;
 
-            // Draw edges first (behind nodes)
             foreach (var edge in _edges)
             {
                 var line = new Line
@@ -305,7 +285,6 @@ namespace StickyNotes__
                 }
             }
 
-            // Draw nodes
             const double nodeRadius = 22;
             foreach (var node in _nodes)
             {
@@ -351,8 +330,6 @@ namespace StickyNotes__
             }
         }
 
-        // ── Node drag ──────────────────────────────────────────────────────────
-
         private GraphNode? _draggingNode;
         private Point _dragOffset;
         private bool _nodeDragged;
@@ -389,7 +366,6 @@ namespace StickyNotes__
                 if (sender is Ellipse el) el.ReleaseMouseCapture();
                 if (!_nodeDragged)
                 {
-                    // It was a click — open the note
                     _mainWnd.OpenNoteWindow(_draggingNode.NoteId);
                 }
                 _draggingNode = null;
@@ -409,7 +385,6 @@ namespace StickyNotes__
                 Canvas.SetLeft(node.Label, node.X - 35);
                 Canvas.SetTop(node.Label, node.Y + r + 3);
             }
-            // Update connected edges
             foreach (var edge in _edges.Where(e => e.A == node || e.B == node))
             {
                 if (edge.Line != null)
@@ -424,8 +399,6 @@ namespace StickyNotes__
                 }
             }
         }
-
-        // ── Canvas pan & zoom ──────────────────────────────────────────────────
 
         private void GraphBorder_MouseWheel(object sender, MouseWheelEventArgs e)
         {
@@ -456,8 +429,6 @@ namespace StickyNotes__
             _isPanning = false;
             ((UIElement)sender).ReleaseMouseCapture();
         }
-
-        // ── Controls ───────────────────────────────────────────────────────────
 
         private void ResetLayout_Click(object sender, RoutedEventArgs e)
         {
