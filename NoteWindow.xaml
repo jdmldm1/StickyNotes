@@ -199,7 +199,9 @@
                               AllowDrop="True" DragEnter="Editor_DragEnter" DragLeave="Editor_DragLeave" DragOver="Editor_DragOver" Drop="Editor_Drop">
                     <StackPanel>
                         <!-- Image -->
-                        <Border x:Name="ImageBorder" MaxHeight="140" Margin="10,5,10,0" CornerRadius="4" ClipToBounds="True" Visibility="Collapsed">
+                        <Border x:Name="ImageBorder" MaxHeight="140" Margin="10,5,10,0" CornerRadius="4" ClipToBounds="True" Visibility="Collapsed"
+                                Cursor="Hand" ToolTip="Click to view full size &#183; Right-click for more options"
+                                MouseLeftButtonUp="NoteImage_Click" MouseRightButtonUp="NoteImage_RightClick">
                             <Image x:Name="NoteImage" Stretch="Uniform"/>
                         </Border>
 

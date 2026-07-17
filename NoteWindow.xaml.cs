@@ -340,6 +340,49 @@ namespace StickyNotes__
             }
         }
 
+        private void NoteImage_Click(object sender, MouseButtonEventArgs e) => OpenImageViewer();
+
+        private void OpenImageViewer()
+        {
+            if (string.IsNullOrEmpty(_note.ImagePath) || !File.Exists(_note.ImagePath)) return;
+            var viewer = new ImageViewerWindow(_note.ImagePath) { Owner = this };
+            viewer.ShowDialog();
+        }
+
+        private void NoteImage_RightClick(object sender, MouseButtonEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_note.ImagePath) || !File.Exists(_note.ImagePath)) return;
+
+            var menu = new ContextMenu();
+            menu.Style = (Style)FindResource(typeof(ContextMenu));
+
+            var viewItem = new MenuItem { Header = "View Full Size" };
+            viewItem.Click += (s, args) => OpenImageViewer();
+            menu.Items.Add(viewItem);
+
+            var copyItem = new MenuItem { Header = "Copy Image" };
+            copyItem.Click += (s, args) => CopyImageToClipboard();
+            menu.Items.Add(copyItem);
+
+            menu.IsOpen = true;
+            e.Handled = true;
+        }
+
+        private void CopyImageToClipboard()
+        {
+            if (NoteImage.Source is not BitmapSource src) return;
+            try
+            {
+                Clipboard.SetImage(src);
+                var main = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
+                main?.ShowStatusToast("Image copied to clipboard 📋");
+            }
+            catch
+            {
+                MessageBox.Show("Couldn't copy the image to the clipboard.", "Copy Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void ExportNote(string format)
         {
             bool isDocx = format == "docx";
