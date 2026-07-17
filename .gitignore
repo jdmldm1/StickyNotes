@@ -1,6 +1,8 @@
 # Build output
 bin/
 obj/
+publish/
+dist/
 
 # Visual Studio / Rider
 .vs/

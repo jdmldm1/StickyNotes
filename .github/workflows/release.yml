@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore "StickyNotes++.csproj"
+
+      - name: Publish self-contained win-x64
+        run: >
+          dotnet publish "StickyNotes++.csproj"
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishSingleFile=false
+          -o publish
+
+      - name: Install WiX toolset
+        run: |
+          dotnet tool install --global wix
+          wix eula accept wix7
+          wix extension add -g WixToolset.UI.wixext
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $root = "${{ github.workspace }}"
+          wix build installer/Product.wxs `
+            -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -d PublishDir="$root/publish" `
+            -d IconFile="$root/app_icon.ico" `
+            -d LicenseFile="$root/installer/License.rtf" `
+            -d ProductVersion="${{ steps.version.outputs.version }}" `
+            -out "dist/StickyNotesPlusPlus-${{ steps.version.outputs.version }}.msi"
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StickyNotesPlusPlus-${{ steps.version.outputs.version }}-msi
+          path: dist/*.msi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: StickyNotes++ ${{ github.ref_name }}
+          files: dist/*.msi
+          generate_release_notes: true
