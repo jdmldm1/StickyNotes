@@ -21,6 +21,11 @@ namespace StickyNotes__
         public string OllamaModel { get; set; } = "";
         public double SidebarOpacity { get; set; } = 0.9;
         public bool AutoTagNewNotes { get; set; } = false;
+
+        public bool JeffsNotesSyncEnabled { get; set; } = false;
+        public string JeffsNotesUrl { get; set; } = "";
+        public int JeffsNotesSyncIntervalMinutes { get; set; } = 15;
+        public string JeffsNotesLastSyncedAt { get; set; } = "";
     }
 
     public partial class SettingsWindow : Window
@@ -59,6 +64,11 @@ namespace StickyNotes__
                         _originalOpacity = config.SidebarOpacity;
                         OpacitySlider.Value = opacityPct;
                         OpacityLabel.Text = $"{(int)opacityPct}%";
+
+                        JeffsNotesSyncEnabledCheckBox.IsChecked = config.JeffsNotesSyncEnabled;
+                        JeffsNotesUrlTextBox.Text = config.JeffsNotesUrl;
+                        JeffsNotesIntervalTextBox.Text = (config.JeffsNotesSyncIntervalMinutes <= 0 ? 15 : config.JeffsNotesSyncIntervalMinutes).ToString();
+                        UpdateLastSyncedText(config.JeffsNotesLastSyncedAt);
                     }
                 }
                 else
@@ -66,6 +76,7 @@ namespace StickyNotes__
                     OllamaUrlTextBox.Text = "http://localhost:11434";
                     OpacitySlider.Value = 90;
                     AutoTagCheckBox.IsChecked = false;
+                    JeffsNotesIntervalTextBox.Text = "15";
                 }
             }
             catch (Exception ex)
@@ -104,10 +115,19 @@ namespace StickyNotes__
                 config.SidebarOpacity = OpacitySlider.Value / 100.0;
                 config.AutoTagNewNotes = AutoTagCheckBox.IsChecked == true;
 
+                config.JeffsNotesSyncEnabled = JeffsNotesSyncEnabledCheckBox.IsChecked == true;
+                config.JeffsNotesUrl = JeffsNotesUrlTextBox.Text.Trim();
+                config.JeffsNotesSyncIntervalMinutes = int.TryParse(JeffsNotesIntervalTextBox.Text.Trim(), out int mins) && mins > 0 ? mins : 15;
+
                 string newJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(AppConfig.SettingsPath, newJson);
                 SettingsService.Invalidate();
-                
+
+                if (Owner is MainWindow mainForSync)
+                    mainForSync.ApplyJeffsNotesSyncSettings();
+                else if (Application.Current.MainWindow is MainWindow mainAppForSync)
+                    mainAppForSync.ApplyJeffsNotesSyncSettings();
+
                 this.DialogResult = true;
                 this.Close();
             }
@@ -328,6 +348,54 @@ namespace StickyNotes__
             catch (Exception ex)
             {
                 MessageBox.Show("Failed to clear notes: " + ex.Message, "Clear All Notes", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void UpdateLastSyncedText(string? lastSyncedAt)
+        {
+            if (string.IsNullOrEmpty(lastSyncedAt))
+            {
+                JeffsNotesLastSyncedTextBlock.Text = "Never synced.";
+                return;
+            }
+            if (DateTime.TryParse(lastSyncedAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                JeffsNotesLastSyncedTextBlock.Text = $"Last synced: {dt.ToLocalTime():g}";
+            else
+                JeffsNotesLastSyncedTextBlock.Text = "";
+        }
+
+        private async void JeffsNotesSyncNowButton_Click(object sender, RoutedEventArgs e)
+        {
+            string url = JeffsNotesUrlTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(url))
+            {
+                JeffsNotesSyncStatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
+                JeffsNotesSyncStatusTextBlock.Text = "Enter a JeffsNotes server URL first.";
+                return;
+            }
+
+            var mainWin = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
+
+            JeffsNotesSyncNowButton.IsEnabled = false;
+            JeffsNotesSyncStatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.LightGray);
+            JeffsNotesSyncStatusTextBlock.Text = "Syncing...";
+
+            try
+            {
+                var syncResult = await mainWin!.RunJeffsNotesSyncAsync(url);
+
+                JeffsNotesSyncStatusTextBlock.Foreground = syncResult.Success ? System.Windows.Media.Brushes.LightGreen : System.Windows.Media.Brushes.Red;
+                JeffsNotesSyncStatusTextBlock.Text = syncResult.Summary();
+                UpdateLastSyncedText(SettingsService.Current.JeffsNotesLastSyncedAt);
+            }
+            catch (Exception ex)
+            {
+                JeffsNotesSyncStatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
+                JeffsNotesSyncStatusTextBlock.Text = "Sync failed: " + ex.Message;
+            }
+            finally
+            {
+                JeffsNotesSyncNowButton.IsEnabled = true;
             }
         }
 

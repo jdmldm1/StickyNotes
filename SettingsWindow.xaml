@@ -41,6 +41,12 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130"/>
@@ -111,13 +117,44 @@
                 </Grid>
 
                 <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                    <TextBlock Text="JeffsNotes Sync" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
+                    <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
+                    <TextBlock Text="Two-way sync with your JeffsNotes web instance. If a note changed on both sides since the last sync, JeffsNotes wins (your local edit is kept in that note's version history)."
+                               Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                    <CheckBox x:Name="JeffsNotesSyncEnabledCheckBox" Content="Enable JeffsNotes sync" Foreground="#e0e0e0" Margin="0,0,0,10"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="Server URL:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
+                <TextBox x:Name="JeffsNotesUrlTextBox" Grid.Row="10" Grid.Column="1" Background="#2d2d2d" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Padding="5,3" Margin="0,5" CaretBrush="White" ToolTip="e.g. http://shiloh:8080"/>
+
+                <TextBlock Grid.Row="11" Grid.Column="0" Text="Auto-sync every:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
+                <StackPanel Grid.Row="11" Grid.Column="1" Orientation="Horizontal" Margin="0,5">
+                    <TextBox x:Name="JeffsNotesIntervalTextBox" Width="60" Background="#2d2d2d" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Padding="5,3" CaretBrush="White"/>
+                    <TextBlock Text="minutes" Foreground="#88ffffff" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="12" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,5,0,5">
+                    <Button x:Name="JeffsNotesSyncNowButton" Content="Sync Now" Click="JeffsNotesSyncNowButton_Click"
+                            Height="30" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" Padding="15,0">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                </StackPanel>
+
+                <TextBlock x:Name="JeffsNotesSyncStatusTextBlock" Grid.Row="13" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
+                <TextBlock x:Name="JeffsNotesLastSyncedTextBlock" Grid.Row="14" Grid.ColumnSpan="2" Text="" Foreground="#666666" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,5"/>
+
+                <StackPanel Grid.Row="15" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="Backup &amp; Restore" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
                     <TextBlock Text="Back up all your notes, images, and attachments to a single file, or restore from a previous backup. Restoring overwrites your current notes."
                                Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                 </StackPanel>
 
-                <StackPanel Grid.Row="10" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,5">
+                <StackPanel Grid.Row="16" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,5">
                     <Button x:Name="BackupNowButton" Content="Back Up Now" Click="BackupNowButton_Click"
                             Height="30" Background="#0084ff" Foreground="#ffffff" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Padding="15,0" Margin="0,0,10,0">
                         <Button.Resources>
@@ -136,31 +173,31 @@
                     </Button>
                 </StackPanel>
 
-                <TextBlock x:Name="BackupStatusTextBlock" Grid.Row="11" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
+                <TextBlock x:Name="BackupStatusTextBlock" Grid.Row="17" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
 
-                <StackPanel Grid.Row="12" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                <StackPanel Grid.Row="18" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="Data Location" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
                     <TextBlock Text="Where your notes database, images, and attachments are stored. Moving it copies everything to the new location and removes it from the old one."
                                Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                 </StackPanel>
 
-                <StackPanel Grid.Row="13" Grid.ColumnSpan="2" Margin="0,0,0,5">
+                <StackPanel Grid.Row="19" Grid.ColumnSpan="2" Margin="0,0,0,5">
                     <TextBlock x:Name="DataLocationPathText" Text="" Foreground="#cccccc" FontSize="10.5" TextWrapping="Wrap" Margin="0,0,0,8"/>
                     <Button x:Name="ChangeDataLocationButton" Content="Change Location..." Click="ChangeDataLocationButton_Click"
                             Height="30" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0"/>
                 </StackPanel>
 
-                <TextBlock x:Name="DataLocationStatusTextBlock" Grid.Row="14" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
+                <TextBlock x:Name="DataLocationStatusTextBlock" Grid.Row="20" Grid.ColumnSpan="2" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>
 
-                <StackPanel Grid.Row="15" Grid.ColumnSpan="2" Margin="0,15,0,5">
+                <StackPanel Grid.Row="21" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="Danger Zone" FontSize="13" FontWeight="SemiBold" Foreground="#ff5252"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>
                     <TextBlock Text="Permanently deletes every note, image, and attachment. This cannot be undone -- back up first if you're not sure."
                                Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                 </StackPanel>
 
-                <Button x:Name="ClearAllNotesButton" Grid.Row="16" Grid.ColumnSpan="2" Content="Clear All Notes" Click="ClearAllNotesButton_Click"
+                <Button x:Name="ClearAllNotesButton" Grid.Row="22" Grid.ColumnSpan="2" Content="Clear All Notes" Click="ClearAllNotesButton_Click"
                         Height="30" Background="#3a1414" Foreground="#ff8080" BorderBrush="#5c2020" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0" Margin="0,0,0,5"/>
             </Grid>
             </ScrollViewer>

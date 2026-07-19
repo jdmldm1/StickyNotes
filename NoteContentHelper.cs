@@ -214,6 +214,21 @@ namespace StickyNotes__
             }
         }
 
+        // Builds a StickyNotes++-compatible content string (XamlPackage, base64) from plain
+        // text pulled from JeffsNotes. Rich formatting doesn't exist on the JeffsNotes side,
+        // so this always produces a single-paragraph plain-text note.
+        public static string BuildContentFromPlainText(string? plainText)
+        {
+            plainText ??= "";
+            var doc = new FlowDocument();
+            foreach (var line in plainText.Replace("\r\n", "\n").Split('\n'))
+            {
+                doc.Blocks.Add(new Paragraph(new Run(line)));
+            }
+            var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+            return SaveRange(range);
+        }
+
         public static string ExtractPlainText(string? content)
         {
             if (string.IsNullOrEmpty(content)) return "";

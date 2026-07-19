@@ -286,6 +286,23 @@ namespace StickyNotes__
                 }
                 catch {}
 
+                try
+                {
+                    // No FK/cascade on local_note_id: when a note is deleted locally, this row must
+                    // survive so JeffsNotesSyncService can detect the deletion and propagate it remotely.
+                    cmd.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS jeffsnotes_sync_map (
+                            local_note_id INTEGER PRIMARY KEY,
+                            remote_id TEXT UNIQUE NOT NULL,
+                            last_synced_signature TEXT,
+                            last_synced_remote_updated_at TEXT,
+                            last_synced_at TEXT
+                        );
+                    ";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
                 CleanupStickyNotesMetadataInDb(conn);
 
                 BackfillPlainText(conn);
@@ -1392,5 +1409,134 @@ namespace StickyNotes__
                 cmd.ExecuteNonQuery();
             }
         }
+
+        // --- JeffsNotes sync map ---
+
+        public static void UpsertSyncMap(int localNoteId, string remoteId, string signature, string? remoteUpdatedAt)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO jeffsnotes_sync_map (local_note_id, remote_id, last_synced_signature, last_synced_remote_updated_at, last_synced_at)
+                    VALUES ($local_id, $remote_id, $sig, $remote_updated_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    ON CONFLICT(local_note_id) DO UPDATE SET
+                        remote_id = excluded.remote_id,
+                        last_synced_signature = excluded.last_synced_signature,
+                        last_synced_remote_updated_at = excluded.last_synced_remote_updated_at,
+                        last_synced_at = excluded.last_synced_at;
+                ";
+                cmd.Parameters.AddWithValue("$local_id", localNoteId);
+                cmd.Parameters.AddWithValue("$remote_id", remoteId);
+                cmd.Parameters.AddWithValue("$sig", (object?)signature ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$remote_updated_at", (object?)remoteUpdatedAt ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static void DeleteSyncMapByLocalId(int localNoteId)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM jeffsnotes_sync_map WHERE local_note_id = $id;";
+                cmd.Parameters.AddWithValue("$id", localNoteId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static void DeleteSyncMapByRemoteId(string remoteId)
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM jeffsnotes_sync_map WHERE remote_id = $id;";
+                cmd.Parameters.AddWithValue("$id", remoteId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        public static Dictionary<string, SyncMapEntry> GetAllSyncMapByRemoteId()
+        {
+            var map = new Dictionary<string, SyncMapEntry>();
+            foreach (var entry in ListSyncMapEntries())
+                map[entry.RemoteId] = entry;
+            return map;
+        }
+
+        public static Dictionary<int, SyncMapEntry> GetAllSyncMapByLocalId()
+        {
+            var map = new Dictionary<int, SyncMapEntry>();
+            foreach (var entry in ListSyncMapEntries())
+                map[entry.LocalNoteId] = entry;
+            return map;
+        }
+
+        // sync_map rows whose local note has been deleted -- these represent local deletions
+        // that still need to be propagated to the remote (JeffsNotes) server.
+        public static List<SyncMapEntry> GetOrphanedSyncMapEntries()
+        {
+            var list = new List<SyncMapEntry>();
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT m.local_note_id, m.remote_id, m.last_synced_signature, m.last_synced_remote_updated_at
+                    FROM jeffsnotes_sync_map m
+                    WHERE NOT EXISTS (SELECT 1 FROM notes n WHERE n.id = m.local_note_id);
+                ";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        list.Add(new SyncMapEntry
+                        {
+                            LocalNoteId = reader.GetInt32(0),
+                            RemoteId = reader.GetString(1),
+                            LastSyncedSignature = reader.IsDBNull(2) ? null : reader.GetString(2),
+                            LastSyncedRemoteUpdatedAt = reader.IsDBNull(3) ? null : reader.GetString(3)
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+
+        private static List<SyncMapEntry> ListSyncMapEntries()
+        {
+            var list = new List<SyncMapEntry>();
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT local_note_id, remote_id, last_synced_signature, last_synced_remote_updated_at FROM jeffsnotes_sync_map;";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        list.Add(new SyncMapEntry
+                        {
+                            LocalNoteId = reader.GetInt32(0),
+                            RemoteId = reader.GetString(1),
+                            LastSyncedSignature = reader.IsDBNull(2) ? null : reader.GetString(2),
+                            LastSyncedRemoteUpdatedAt = reader.IsDBNull(3) ? null : reader.GetString(3)
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+    }
+
+    public class SyncMapEntry
+    {
+        public int LocalNoteId { get; set; }
+        public string RemoteId { get; set; } = "";
+        public string? LastSyncedSignature { get; set; }
+        public string? LastSyncedRemoteUpdatedAt { get; set; }
     }
 }
