@@ -239,6 +239,11 @@
 
                     <!-- Action Button Controls Stack -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Sync Button -->
+                        <Button x:Name="SyncIconButton" Content="🔄" Click="SyncIconButton_Click" ToolTip="Sync with JeffsNotes"
+                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
                         <!-- Options Button -->
                         <Button Content="⚙" Click="SettingsButton_Click" ToolTip="Options"
                                 Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 

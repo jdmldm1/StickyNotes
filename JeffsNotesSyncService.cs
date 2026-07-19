@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -35,13 +36,6 @@ namespace StickyNotes__
         }
     }
 
-    // Two-way sync between StickyNotes++'s local SQLite store and a JeffsNotes web instance's
-    // REST API. On conflict (a note changed on both sides since the last sync), JeffsNotes wins,
-    // but the local edit is stashed into StickyNotes++'s own note history first so it isn't lost.
-    //
-    // Formatting note: JeffsNotes stores plain/markdown text; StickyNotes++ stores rich text
-    // (XamlPackage). A note pulled from JeffsNotes becomes a plain-text note locally, and only
-    // plain text is ever pushed back up -- rich formatting doesn't round-trip.
     public static class JeffsNotesSyncService
     {
         private class RemoteNoteDto
@@ -49,8 +43,10 @@ namespace StickyNotes__
             [JsonPropertyName("id")] public string Id { get; set; } = "";
             [JsonPropertyName("title")] public string Title { get; set; } = "";
             [JsonPropertyName("content")] public string Content { get; set; } = "";
+            [JsonPropertyName("type")] public string? Type { get; set; }
             [JsonPropertyName("updated_at")] public string? UpdatedAt { get; set; }
             [JsonPropertyName("pinned")] public int Pinned { get; set; }
+            [JsonPropertyName("is_template")] public int IsTemplate { get; set; }
             [JsonPropertyName("tags")] public string? Tags { get; set; }
             [JsonPropertyName("folder_id")] public string? FolderId { get; set; }
             [JsonPropertyName("deleted_at")] public string? DeletedAt { get; set; }
@@ -59,6 +55,12 @@ namespace StickyNotes__
         private class RemoteFolderDto
         {
             [JsonPropertyName("id")] public string Id { get; set; } = "";
+            [JsonPropertyName("name")] public string Name { get; set; } = "";
+        }
+
+        private class UploadResponse
+        {
+            [JsonPropertyName("url")] public string Url { get; set; } = "";
             [JsonPropertyName("name")] public string Name { get; set; } = "";
         }
 
@@ -84,7 +86,6 @@ namespace StickyNotes__
             }
             catch (Exception ex)
             {
-                // Server unreachable (e.g. at work, off the home network) -- fail quietly, touch nothing.
                 result.Error = $"JeffsNotes server not reachable ({ex.Message}).";
                 return result;
             }
@@ -103,7 +104,6 @@ namespace StickyNotes__
 
             try
             {
-                // --- Pull: remote notes changed (or soft-deleted) since the last sync ---
                 var remoteChanged = await http.GetFromJsonAsync<List<RemoteNoteDto>>(
                     $"{baseUrl}/api/sync/notes?since={Uri.EscapeDataString(watermark)}") ?? new();
 
@@ -134,17 +134,24 @@ namespace StickyNotes__
 
                         var localNote = mapping != null ? DatabaseHelper.GetNote(mapping.LocalNoteId) : null;
 
+                        string? localImagePath = null;
+                        string cleanedContent = rn.Content;
+                        if (rn.Type == "image" || (!string.IsNullOrEmpty(rn.Content) && rn.Content.Contains("![Screenshot]")) || (!string.IsNullOrEmpty(rn.Content) && rn.Content.Contains("![")))
+                        {
+                            localImagePath = await DownloadRemoteImageAsync(http, baseUrl, rn.Content);
+                            cleanedContent = RemoveMarkdownImage(rn.Content);
+                        }
+
                         if (localNote == null)
                         {
-                            // Either never seen before, or it was deleted locally but JeffsNotes still
-                            // has a live (non-deleted) version -- JeffsNotes wins, so recreate it.
                             if (mapping != null) DatabaseHelper.DeleteSyncMapByLocalId(mapping.LocalNoteId);
 
-                            string content = NoteContentHelper.BuildContentFromPlainText(rn.Content);
-                            int localId = DatabaseHelper.CreateNote(rn.Title, content, null, null, "yellow");
+                            string content = NoteContentHelper.BuildContentFromPlainText(cleanedContent);
+                            int localId = DatabaseHelper.CreateNote(rn.Title, content, localImagePath, null, "yellow");
                             var created = DatabaseHelper.GetNote(localId)!;
                             created.Category = category;
                             created.IsFavorite = rn.Pinned == 1;
+                            created.IsTemplate = rn.IsTemplate == 1;
                             DatabaseHelper.UpdateNote(created);
                             foreach (var t in tagList) DatabaseHelper.AddTagToNote(localId, t);
 
@@ -159,16 +166,16 @@ namespace StickyNotes__
 
                         if (localDirty)
                         {
-                            // Real conflict: both sides changed. JeffsNotes wins, but stash the local
-                            // edit into this note's own version history first so nothing is silently lost.
                             DatabaseHelper.AddNoteHistoryEntry(localNote.Id, localNote.Content);
                             result.Conflicts++;
                         }
 
                         localNote.Title = rn.Title;
-                        localNote.Content = NoteContentHelper.BuildContentFromPlainText(rn.Content);
+                        localNote.Content = NoteContentHelper.BuildContentFromPlainText(cleanedContent);
+                        localNote.ImagePath = localImagePath ?? localNote.ImagePath;
                         localNote.Category = category;
                         localNote.IsFavorite = rn.Pinned == 1;
+                        localNote.IsTemplate = rn.IsTemplate == 1;
                         DatabaseHelper.UpdateNote(localNote);
                         DatabaseHelper.ClearNoteTags(localNote.Id);
                         foreach (var t in tagList) DatabaseHelper.AddTagToNote(localNote.Id, t);
@@ -183,22 +190,49 @@ namespace StickyNotes__
                     }
                 }
 
-                // --- Push: local notes that changed since they were last synced ---
                 var justPulled = new HashSet<int>(result.AffectedLocalNoteIds);
                 var syncMapByLocal = DatabaseHelper.GetAllSyncMapByLocalId();
 
                 foreach (var note in DatabaseHelper.ListNotes())
                 {
-                    if (justPulled.Contains(note.Id)) continue; // already reconciled above this cycle
+                    if (justPulled.Contains(note.Id)) continue;
 
                     try
                     {
                         syncMapByLocal.TryGetValue(note.Id, out var mapping);
                         var tags = DatabaseHelper.GetNoteTags(note.Id);
                         string plain = NoteContentHelper.ExtractPlainText(note.Content);
-                        string signature = BuildSignature(note.Title, plain, note.Category, tags, note.IsFavorite);
 
-                        if (mapping != null && signature == mapping.LastSyncedSignature) continue; // no local change
+                        string contentToPush = plain;
+                        string typeToPush = "text";
+
+                        if (!string.IsNullOrEmpty(note.ImagePath) && File.Exists(note.ImagePath))
+                        {
+                            try
+                            {
+                                byte[] bytes = File.ReadAllBytes(note.ImagePath);
+                                string base64 = Convert.ToBase64String(bytes);
+                                string dataUri = $"data:image/png;base64,{base64}";
+                                var uploadRes = await PostJsonAsync<UploadResponse>(http, $"{baseUrl}/api/upload", new 
+                                { 
+                                    image = dataUri, 
+                                    name = Path.GetFileName(note.ImagePath) 
+                                });
+                                if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Url))
+                                {
+                                    contentToPush = $"![{Path.GetFileName(note.ImagePath)}]({uploadRes.Url})\n\n{plain}";
+                                    typeToPush = "image";
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"JeffsNotes sync: failed to upload local screenshot: {ex.Message}");
+                            }
+                        }
+
+                        string signature = BuildSignature(note.Title, contentToPush, note.Category, tags, note.IsFavorite);
+
+                        if (mapping != null && signature == mapping.LastSyncedSignature) continue;
 
                         string? remoteFolderId = null;
                         if (!string.Equals(note.Category, "General", StringComparison.OrdinalIgnoreCase))
@@ -223,8 +257,10 @@ namespace StickyNotes__
                             {
                                 id = newRemoteId,
                                 title = note.Title,
-                                content = plain,
+                                content = contentToPush,
+                                type = typeToPush,
                                 pinned = note.IsFavorite ? 1 : 0,
+                                is_template = note.IsTemplate ? 1 : 0,
                                 tags = string.Join(",", tags),
                                 folder_id = remoteFolderId
                             });
@@ -234,8 +270,10 @@ namespace StickyNotes__
                             pushed = await PatchJsonAsync<RemoteNoteDto>(http, $"{baseUrl}/api/notes/{mapping.RemoteId}", new
                             {
                                 title = note.Title,
-                                content = plain,
+                                content = contentToPush,
+                                type = typeToPush,
                                 pinned = note.IsFavorite ? 1 : 0,
+                                is_template = note.IsTemplate ? 1 : 0,
                                 tags = string.Join(",", tags),
                                 folder_id = remoteFolderId
                             });
@@ -254,7 +292,6 @@ namespace StickyNotes__
                     }
                 }
 
-                // --- Propagate local deletions: sync_map rows whose local note no longer exists ---
                 foreach (var orphan in DatabaseHelper.GetOrphanedSyncMapEntries())
                 {
                     try
@@ -283,6 +320,38 @@ namespace StickyNotes__
 
             result.NewWatermark = newWatermark;
             return result;
+        }
+
+        private static async Task<string?> DownloadRemoteImageAsync(HttpClient http, string baseUrl, string content)
+        {
+            try
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(content, @"!\[.*?\]\((.*?)\)");
+                if (match.Success)
+                {
+                    string imageUrl = match.Groups[1].Value;
+                    if (imageUrl.StartsWith("/api/"))
+                    {
+                        string fullUrl = $"{baseUrl.TrimEnd('/')}{imageUrl}";
+                        byte[] data = await http.GetByteArrayAsync(fullUrl);
+                        string fileName = Path.GetFileName(imageUrl);
+                        string localPath = Path.Combine(AppConfig.ImagesDir, fileName);
+                        await File.WriteAllBytesAsync(localPath, data);
+                        return localPath;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to download remote image: {ex.Message}");
+            }
+            return null;
+        }
+
+        private static string RemoveMarkdownImage(string content)
+        {
+            if (string.IsNullOrEmpty(content)) return "";
+            return System.Text.RegularExpressions.Regex.Replace(content, @"!\[.*?\]\((.*?)\)\s*\r?\n?", "").Trim();
         }
 
         private static List<string> SplitTags(string? tags) =>

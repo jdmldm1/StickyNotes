@@ -95,5 +95,55 @@ namespace StickyNotes__
                 _jeffsNotesSyncInProgress = false;
             }
         }
+
+        private async void SyncIconButton_Click(object sender, RoutedEventArgs e)
+        {
+            var config = SettingsService.Current;
+            if (string.IsNullOrWhiteSpace(config.JeffsNotesUrl))
+            {
+                var confirm = MessageBox.Show(
+                    "JeffsNotes server URL is not configured. Would you like to open Settings to set it up now?",
+                    "Sync with JeffsNotes", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (confirm == MessageBoxResult.Yes)
+                {
+                    var settingsWnd = new SettingsWindow { Owner = this };
+                    settingsWnd.ShowDialog();
+                    LoadSavedOpacity();
+                }
+                return;
+            }
+
+            try
+            {
+                if (sender is Button btn)
+                {
+                    btn.IsEnabled = false;
+                    btn.Content = "⏳";
+                }
+
+                var result = await RunJeffsNotesSyncAsync(config.JeffsNotesUrl);
+
+                if (result.Success)
+                {
+                    MessageBox.Show(result.Summary(), "Sync Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show(result.Summary(), "Sync Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Sync failed: " + ex.Message, "Sync Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                if (sender is Button btn)
+                {
+                    btn.IsEnabled = true;
+                    btn.Content = "🔄";
+                }
+            }
+        }
     }
 }
