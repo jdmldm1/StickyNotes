@@ -98,7 +98,7 @@ namespace StickyNotes__
             if (_note == null) return;
 
             NoteTitleTextBox.Text = _note.Title ?? "";
-            TitleTextBlock.Text = string.IsNullOrEmpty(_note.Title) ? "Sticky Note" : _note.Title;
+            TitleTextBlock.Text = (string.IsNullOrEmpty(_note.Title) ? "Sticky Note" : _note.Title) + (_note.IsSecure ? " 🔒" : "");
 
             this.Width = _note.W ?? 300;
             this.Height = _note.H ?? 320;
@@ -107,6 +107,27 @@ namespace StickyNotes__
                 this.Left = _note.X.Value;
                 this.Top = _note.Y.Value;
             }
+
+            if (_note.IsSecure)
+            {
+                // Secure notes keep a deliberately small surface: no attachments/images/backlinks,
+                // just title + encrypted body. Nothing sensitive is ever loaded until unlocked.
+                ImageBorder.Visibility = Visibility.Collapsed;
+                AttachmentsPanel.Children.Clear();
+
+                if (!VaultService.IsUnlocked)
+                {
+                    NoteRichTextBox.Document.Blocks.Clear();
+                    LockedOverlay.Visibility = Visibility.Visible;
+                    UpdateWordCount();
+                    return;
+                }
+
+                DecryptAndShowSecureNote();
+                return;
+            }
+
+            LockedOverlay.Visibility = Visibility.Collapsed;
 
             if (!string.IsNullOrEmpty(_note.ImagePath) && File.Exists(_note.ImagePath))
             {
@@ -193,6 +214,55 @@ namespace StickyNotes__
             RefreshCategoryDropdown();
             UpdateWordCount();
             RefreshBacklinksPanel();
+        }
+        private void DecryptAndShowSecureNote()
+        {
+            LockedOverlay.Visibility = Visibility.Collapsed;
+            NoteRichTextBox.Document.Blocks.Clear();
+
+            if (!string.IsNullOrEmpty(_note.Content))
+            {
+                try
+                {
+                    string xamlText = VaultService.Decrypt(_note.Content);
+                    TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
+                    if (!NoteContentHelper.TryLoadRange(range, xamlText))
+                    {
+                        NoteRichTextBox.Document.Blocks.Add(new Paragraph(new Run(xamlText)));
+                    }
+                }
+                catch
+                {
+                    NoteRichTextBox.Document.Blocks.Add(new Paragraph(new Run("⚠ Couldn't decrypt this note - wrong vault password or corrupted data.")));
+                }
+            }
+
+            RewireInteractiveElements();
+
+            // Secure notes never populate Time Machine history (it would store plaintext snapshots).
+            _lastHistoryContent = "";
+            _lastHistoryPlain = "";
+            _lastHistoryTime = DateTime.Now;
+
+            UpdateTagsDisplay();
+            RefreshCategoryDropdown();
+            UpdateWordCount();
+        }
+        private void UnlockNoteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!VaultService.IsUnlocked)
+            {
+                var dialog = new PasswordDialog("Enter your vault password to view this note.", "Unlock Note") { Owner = this };
+                if (dialog.ShowDialog() != true) return;
+
+                if (!VaultService.TryUnlock(dialog.Password))
+                {
+                    MessageBox.Show("Incorrect password.", "Unlock Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
+            DecryptAndShowSecureNote();
         }
         public void ReloadNoteFromDb()
         {

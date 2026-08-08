@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Threading;
 using System.Text.RegularExpressions;
@@ -20,11 +22,14 @@ namespace StickyNotes__
         private Note? _currentNote;
         private bool _isLoadingNote;
         private readonly DispatcherTimer _saveTimer;
+        // Tracks whether categories panel is collapsed
+        private bool _categoriesCollapsed = false;
         private string _lastHistoryContent = "";
         private string _lastHistoryPlain = "";
         private DateTime _lastHistoryTime = DateTime.Now;
         private bool _isAiChatActive;
         private Border? _typingBubble;
+        private DispatcherTimer? _searchDebounceTimer;
 
         private static readonly string[] TabAccentColors = { "#D49A13", "#1A8F54", "#C2185B", "#7B1FA2", "#0288D1", "#424242" };
 
@@ -184,16 +189,35 @@ namespace StickyNotes__
 
         private void SelectCategory(string? categoryKey)
         {
+            // When a category is selected, keep the panel expanded for navigation
+            _categoriesCollapsed = false;
+            UpdateCategoryPanelVisibility();
             _selectedCategory = categoryKey;
             RefreshCategoryTabs();
             RefreshNotesList();
         }
 
-        private void ManagerSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshNotesList();
+
+        // Coalesces rapid keystrokes so search doesn't run a full DB query + list rebuild per character.
+        private void ManagerSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_searchDebounceTimer == null)
+            {
+                _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+                _searchDebounceTimer.Tick += (s, args) =>
+                {
+                    _searchDebounceTimer!.Stop();
+                    RefreshNotesList();
+                };
+            }
+            _searchDebounceTimer.Stop();
+            _searchDebounceTimer.Start();
+        }
 
         private void RefreshNotesList()
         {
-            NotesListPanel.Children.Clear();
+            // Ensure category panel visibility matches current collapsed state
+            UpdateCategoryPanelVisibility();
 
             string searchQuery = ManagerSearchBox.Text.Trim();
             string? categoryFilter = (_selectedCategory != null && _selectedCategory != "__favorites__") ? _selectedCategory : null;
@@ -212,55 +236,54 @@ namespace StickyNotes__
                 _ => _selectedCategory
             };
 
-            foreach (var note in notes)
-            {
-                NotesListPanel.Children.Add(BuildNoteListItem(note));
-            }
+            NotesListPanel.ItemsSource = notes.Select(BuildNoteListItemViewModel).ToList();
         }
 
-        private Border BuildNoteListItem(Note note)
+        // Updates visibility of category panel and rotates collapse icon
+        private void UpdateCategoryPanelVisibility()
         {
-            bool isSelected = _currentNote != null && _currentNote.Id == note.Id;
+            if (CategoryScrollViewer != null)
+                CategoryScrollViewer.Visibility = _categoriesCollapsed ? Visibility.Collapsed : Visibility.Visible;
+            if (CategoryCollapseRotate != null)
+                CategoryCollapseRotate.Angle = _categoriesCollapsed ? 90 : 0;
+        }
+
+        // Handler for collapse/expand toggle button
+        private void CategoryCollapseButton_Click(object sender, RoutedEventArgs e)
+        {
+            _categoriesCollapsed = !_categoriesCollapsed;
+            UpdateCategoryPanelVisibility();
+        }
+
+        private static readonly Brush SelectedItemBrush = FrozenBrush(0x40, 0x00, 0x84, 0xff);
+        private static readonly Brush UnselectedItemBrush = FrozenBrush(0x0C, 0xff, 0xff, 0xff);
+        private static Brush FrozenBrush(byte a, byte r, byte g, byte b)
+        {
+            var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+            brush.Freeze();
+            return brush;
+        }
+
+        private NoteListItemViewModel BuildNoteListItemViewModel(Note note)
+        {
             string title = string.IsNullOrEmpty(note.Title) ? "Sticky Note" : note.Title;
-            string fullText = NoteContentHelper.ExtractPlainText(note.Content);
-            string snippet = BuildSnippetWithoutTitle(fullText);
+            string snippet = BuildSnippetWithoutTitle(note.PlainText);
             if (snippet.Length > 90) snippet = snippet.Substring(0, 90) + "...";
 
-            var border = new Border
+            return new NoteListItemViewModel
             {
-                Padding = new Thickness(10, 8, 10, 8),
-                Margin = new Thickness(0, 0, 0, 6),
-                CornerRadius = new CornerRadius(6),
-                Background = isSelected ? new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x84, 0xff)) : new SolidColorBrush(Color.FromArgb(0x0C, 0xff, 0xff, 0xff)),
-                Cursor = Cursors.Hand,
-                Tag = note.Id
+                Id = note.Id,
+                Title = title,
+                Snippet = snippet,
+                IsFavorite = note.IsFavorite,
+                SelectedBackground = (_currentNote != null && _currentNote.Id == note.Id) ? SelectedItemBrush : UnselectedItemBrush
             };
+        }
 
-            var stack = new StackPanel();
-            var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
-            if (note.IsFavorite)
-            {
-                titleRow.Children.Add(new TextBlock { Text = "★ ", Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)), FontSize = 11.5 });
-            }
-            titleRow.Children.Add(new TextBlock { Text = title, Foreground = Brushes.White, FontSize = 12.5, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-            stack.Children.Add(titleRow);
-
-            if (!string.IsNullOrEmpty(snippet))
-            {
-                stack.Children.Add(new TextBlock
-                {
-                    Text = snippet,
-                    Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0xff, 0xff, 0xff)),
-                    FontSize = 11,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 3, 0, 0)
-                });
-            }
-
-            border.Child = stack;
-            border.MouseLeftButtonUp += (s, e) => LoadNoteIntoEditor(note.Id);
-
-            return border;
+        private void NoteListItem_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.DataContext is not NoteListItemViewModel vm) return;
+            LoadNoteIntoEditor(vm.Id);
         }
 
         private string BuildSnippetWithoutTitle(string fullPlainText)
@@ -273,6 +296,9 @@ namespace StickyNotes__
 
         private void LoadNoteIntoEditor(int noteId)
         {
+            // Auto-collapse category panel when opening a note for focused editing
+            _categoriesCollapsed = true;
+            UpdateCategoryPanelVisibility();
             if (_currentNote != null && _currentNote.Id != noteId)
             {
                 SaveCurrentNote();
@@ -284,6 +310,29 @@ namespace StickyNotes__
             _isLoadingNote = true;
             _currentNote = note;
 
+            if (note.IsSecure)
+            {
+                // Secure notes aren't editable inline here - the unlock UI only lives in NoteWindow,
+                // so keep this pane simple and just point at "Open" instead of duplicating it.
+                EditorHeaderGrid.Visibility = Visibility.Visible;
+                EditorToolbar.Visibility = Visibility.Collapsed;
+                EditorImageBorder.Visibility = Visibility.Collapsed;
+                ManagerRichTextBox.Visibility = Visibility.Collapsed;
+                EditorFooterGrid.Visibility = Visibility.Collapsed;
+                AiChatPanel.Visibility = Visibility.Collapsed;
+
+                EditorTitleBox.Text = note.Title ?? "";
+                EditorFavoriteButton.Content = note.IsFavorite ? "★" : "☆";
+                EditorFavoriteButton.Foreground = note.IsFavorite ? new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)) : new SolidColorBrush(Color.FromArgb(0x80, 0xff, 0xff, 0xff));
+
+                EmptyStateText.Text = "🔒 This note is secure.\nOpen it in its own window to unlock and view it.";
+                EmptyStateText.Visibility = Visibility.Visible;
+
+                _isLoadingNote = false;
+                return;
+            }
+
+            EmptyStateText.Text = "Select a note on the left to view or edit it here.";
             EmptyStateText.Visibility = Visibility.Collapsed;
             EditorHeaderGrid.Visibility = Visibility.Visible;
             EditorToolbar.Visibility = Visibility.Visible;
@@ -297,6 +346,29 @@ namespace StickyNotes__
             EditorTitleBox.Text = note.Title ?? "";
             EditorFavoriteButton.Content = note.IsFavorite ? "★" : "☆";
             EditorFavoriteButton.Foreground = note.IsFavorite ? new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)) : new SolidColorBrush(Color.FromArgb(0x80, 0xff, 0xff, 0xff));
+
+            if (!string.IsNullOrEmpty(note.ImagePath) && File.Exists(note.ImagePath))
+            {
+                try
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.UriSource = new Uri(note.ImagePath);
+                    bitmap.EndInit();
+
+                    EditorNoteImage.Source = bitmap;
+                    EditorImageBorder.Visibility = Visibility.Visible;
+                }
+                catch
+                {
+                    EditorImageBorder.Visibility = Visibility.Collapsed;
+                }
+            }
+            else
+            {
+                EditorImageBorder.Visibility = Visibility.Collapsed;
+            }
 
             ManagerRichTextBox.Document.Blocks.Clear();
             if (!string.IsNullOrEmpty(note.Content))
@@ -444,6 +516,7 @@ namespace StickyNotes__
             EmptyStateText.Visibility = Visibility.Visible;
             EditorHeaderGrid.Visibility = Visibility.Collapsed;
             EditorToolbar.Visibility = Visibility.Collapsed;
+            EditorImageBorder.Visibility = Visibility.Collapsed;
             ManagerRichTextBox.Visibility = Visibility.Collapsed;
             EditorFooterGrid.Visibility = Visibility.Collapsed;
             AiChatPanel.Visibility = Visibility.Collapsed;
@@ -451,6 +524,13 @@ namespace StickyNotes__
 
             RefreshCategoryTabs();
             RefreshNotesList();
+        }
+
+        private void EditorImage_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (_currentNote == null || string.IsNullOrEmpty(_currentNote.ImagePath) || !File.Exists(_currentNote.ImagePath)) return;
+            var viewer = new ImageViewerWindow(_currentNote.ImagePath) { Owner = this };
+            viewer.ShowDialog();
         }
 
         private void ManagerRichTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -1053,5 +1133,18 @@ namespace StickyNotes__
 
             ManagerRichTextBox.Focus();
         }
+    }
+
+    // A row in the virtualized notes list (NoteManagerWindow.xaml's NotesListPanel).
+    public class NoteListItemViewModel
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Snippet { get; set; } = "";
+        public bool IsFavorite { get; set; }
+        public Brush SelectedBackground { get; set; } = Brushes.Transparent;
+
+        public Visibility FavoriteVisibility => IsFavorite ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility SnippetVisibility => string.IsNullOrEmpty(Snippet) ? Visibility.Collapsed : Visibility.Visible;
     }
 }

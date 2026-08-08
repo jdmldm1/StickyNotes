@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Choose Template" Height="440" Width="560"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Loaded="Window_Loaded">
 
     <Border Background="#F2141414" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="10">
         <Grid>

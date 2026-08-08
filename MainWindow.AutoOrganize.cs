@@ -48,7 +48,7 @@ namespace StickyNotes__
                 sb.AppendLine("Notes list:");
                 foreach (var note in notes)
                 {
-                    string plain = GetPlainTextFromXaml(note.Content);
+                    string plain = note.PlainText;
                     if (plain.Length > 80) plain = plain.Substring(0, 80);
                     sb.AppendLine($"ID: {note.Id} | Title: {note.Title} | Snippet: {plain}");
                 }
@@ -172,7 +172,59 @@ namespace StickyNotes__
             return json.Substring(0, lastCompleteEntryEnd + 1) + "}";
         }
 
-        private string GetPlainTextFromXaml(string xaml) => NoteContentHelper.ExtractPlainText(xaml);
+        // Finds notes with a screenshot image but no OCR text (e.g. captured before OCR worked, or a
+        // scan that silently failed) and runs OCR on them now. Never overwrites text the user already
+        // typed into the note - if the note body isn't empty, the OCR result is stored only in the
+        // searchable ocr_text column, not merged into the visible content.
+        public async Task<int> RunOcrBackfillAsync()
+        {
+            var candidates = DatabaseHelper.ListNotes(null, null)
+                .Where(n => !string.IsNullOrEmpty(n.ImagePath) && File.Exists(n.ImagePath) && string.IsNullOrWhiteSpace(n.OcrText))
+                .ToList();
+
+            int updated = 0;
+            foreach (var note in candidates)
+            {
+                try
+                {
+                    var ocrResult = await OcrHelper.PerformOcrAsync(note.ImagePath!);
+                    string ocrText = ocrResult.Text ?? "";
+                    if (string.IsNullOrWhiteSpace(ocrText)) continue;
+
+                    note.OcrText = ocrText;
+
+                    if (string.IsNullOrWhiteSpace(note.PlainText))
+                    {
+                        var doc = new FlowDocument();
+                        doc.Blocks.Add(new Paragraph(new Run(ocrText)));
+                        var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+                        note.Content = NoteContentHelper.SaveRange(range);
+                    }
+
+                    DatabaseHelper.UpdateNote(note);
+
+                    foreach (var tag in ocrResult.Tags)
+                    {
+                        if (!string.IsNullOrWhiteSpace(tag))
+                            DatabaseHelper.AddTagToNote(note.Id, tag);
+                    }
+
+                    updated++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"OCR backfill failed for note {note.Id} (non-fatal): {ex.Message}");
+                }
+            }
+
+            if (updated > 0)
+            {
+                RefreshNotesList();
+                RefreshTagsFilter();
+            }
+
+            return updated;
+        }
     }
 
     public class NoteOrganizationResult

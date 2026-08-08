@@ -28,7 +28,7 @@ namespace StickyNotes__
         private static bool IsStaleNote(Note note)
         {
             if (DateTime.Now - note.UpdatedAt < StaleNoteAge) return false;
-            return NoteContentHelper.ExtractPlainText(note.Content).Contains('☐');
+            return note.PlainText.Contains('☐');
         }
         private void CheckStaleNotes()
         {

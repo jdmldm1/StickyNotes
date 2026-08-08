@@ -74,6 +74,40 @@
                             </Style>
                         </Button.Resources>
                     </Button>
+
+                    <TextBlock Text="Scan for screenshot notes that never got OCR text (e.g. from before OCR worked, or a scan that failed) and fill them in."
+                               Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,15,0,10"/>
+                    <Button x:Name="OcrBackfillButton" Content="🔍 Scan Screenshots for Missing OCR Text" Click="OcrBackfillButton_Click"
+                            Height="32" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                    <TextBlock x:Name="OcrBackfillStatusTextBlock" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"/>
+
+                    <TextBlock Text="Secure Notes (right-click any note → Make Secure Note) are encrypted with a vault password you set the first time. If unlocked, lock it now before stepping away - it also locks automatically when you restart the app."
+                               Foreground="#88ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,15,0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="LockVaultButton" Content="🔒 Lock Vault Now" Click="LockVaultButton_Click"
+                                Height="32" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                        <Button x:Name="ChangeVaultPasswordButton" Content="🔑 Change Password" Click="ChangeVaultPasswordButton_Click"
+                                Height="32" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left" Padding="15,0" Margin="10,0,0,0">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </StackPanel>
+                    <TextBlock x:Name="ChangeVaultPasswordStatusTextBlock" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"/>
                 </StackPanel>
 
                 <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,5">
@@ -88,10 +122,13 @@
                 <TextBox x:Name="OllamaModelTextBox" Grid.Row="3" Grid.Column="1" Background="#2d2d2d" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Padding="5,3" Margin="0,5" CaretBrush="White" ToolTip="Leave empty to auto-detect first running model."/>
 
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Auto-Tagging:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
-                <CheckBox x:Name="AutoTagCheckBox" Grid.Row="4" Grid.Column="1" Content="Enable AI Auto-Tagging on Screen Capture and Clipboard Import" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,5"/>
+                <CheckBox x:Name="AutoTagCheckBox" Grid.Row="4" Grid.Column="1" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,5">
+                    <TextBlock Text="Enable AI Auto-Tagging on Screen Capture and Clipboard Import" TextWrapping="Wrap" MaxWidth="220"/>
+                </CheckBox>
 
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="Docker Setup:" Foreground="#e0e0e0" VerticalAlignment="Center" Margin="0,8"/>
-                <Button x:Name="DockerSetupBtn" Grid.Row="5" Grid.Column="1" Content="Auto Setup Ollama via Docker (Qwen 2.5 Coder:3b)" Click="DockerSetupBtn_Click"
+                <Button x:Name="DockerSetupBtn" Grid.Row="5" Grid.Column="1" Content="Auto Setup via Docker" Click="DockerSetupBtn_Click"
+                        ToolTip="Installs and runs Ollama with the Qwen 2.5 Coder:3b model in a local Docker container"
                         Height="28" Background="#2b2b2b" Foreground="#ffffff" BorderBrush="#444444" BorderThickness="1" Margin="0,5" HorizontalAlignment="Left" Padding="15,0"/>
 
                 <TextBlock x:Name="SetupStatusTextBlock" Grid.Row="6" Grid.Column="1" Text="" Foreground="#88ffffff" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,5"/>

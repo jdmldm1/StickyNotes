@@ -24,6 +24,24 @@ namespace StickyNotes__
     {
         private string? _selectedTagFilter;
         private string _sortOrder = "date";
+        private string _cardSize = "Medium";
+        private DispatcherTimer? _searchDebounceTimer;
+
+        // Coalesces rapid keystrokes so search doesn't run a full DB query + list rebuild per character.
+        private void DebounceSearch()
+        {
+            if (_searchDebounceTimer == null)
+            {
+                _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+                _searchDebounceTimer.Tick += (s, e) =>
+                {
+                    _searchDebounceTimer!.Stop();
+                    RefreshNotesList();
+                };
+            }
+            _searchDebounceTimer.Stop();
+            _searchDebounceTimer.Start();
+        }
         private static readonly string[] CategoryColors = { "#D49A13", "#1A8F54", "#C2185B", "#7B1FA2", "#0288D1", "#e65100" };
         private static Brush GetCategoryColorBrush(string categoryName)
         {
@@ -111,8 +129,7 @@ namespace StickyNotes__
         private static readonly Dictionary<string, bool> _expanderStates = new Dictionary<string, bool>();
         public void RefreshNotesList()
         {
-            if (NotesGroupPanel == null) return;
-            NotesGroupPanel.Children.Clear();
+            if (NotesListBox == null) return;
 
             string searchQuery = SearchTextBox.Text.Trim();
             var notes = DatabaseHelper.ListNotes(
@@ -132,7 +149,7 @@ namespace StickyNotes__
 
             var viewModels = sortedNotes.Select(n =>
             {
-                string fullText = GetPlainTextFromXaml(n.Content);
+                string fullText = n.PlainText;
                 List<string> tags = tagsMap.TryGetValue(n.Id, out var t) ? t : new List<string>();
                 List<NoteAttachment> attachments = attachmentsMap.TryGetValue(n.Id, out var a) ? a : new List<NoteAttachment>();
                 return new NoteCardViewModel
@@ -140,41 +157,33 @@ namespace StickyNotes__
                     Id = n.Id,
                     Title = n.Title,
                     Color = n.Color,
-                    Snippet = BuildCardSnippet(fullText),
+                    Snippet = n.IsSecure ? "Protected — click to unlock" : BuildCardSnippet(fullText),
                     FullPlainText = fullText,
-                    ImagePath = n.ImagePath,
+                    ImagePath = n.IsSecure ? null : n.ImagePath,
                     Tags = tags,
                     Category = n.Category ?? "General",
                     IsFavorite = n.IsFavorite,
+                    IsSecure = n.IsSecure,
                     UpdatedAt = n.UpdatedAt,
-                    QuickOpenItems = BuildQuickOpenItems(n, attachments)
+                    CardSize = _cardSize,
+                    Attachments = n.IsSecure ? new List<NoteAttachment>() : attachments,
+                    HasLikelyLink = !n.IsSecure && (fullText.Contains("http://", StringComparison.OrdinalIgnoreCase) || fullText.Contains("https://", StringComparison.OrdinalIgnoreCase))
                 };
             }).ToList();
 
-            var template = (DataTemplate)this.FindResource("NoteCardTemplate");
+            var favoriteBrush = new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07));
+            var notesBrush = new SolidColorBrush(Color.FromRgb(0x00, 0x84, 0xff));
+
+            // Flat row list: group headers + (only-if-expanded) note cards. Feeding a single virtualizing
+            // ListBox this way means only on-screen rows are ever realized, no matter how many notes exist.
+            var rows = new List<object>();
 
             if (_sortOrder == "category")
             {
                 var favorites = viewModels.Where(vm => vm.IsFavorite).ToList();
                 if (favorites.Count > 0)
                 {
-                    var favoritesHeader = new TextBlock
-                    {
-                        Text = $"★ Favorites ({favorites.Count})",
-                        Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)),
-                        FontWeight = FontWeights.Bold,
-                        FontSize = 12.5,
-                        Margin = new Thickness(0, 0, 0, 8)
-                    };
-                    NotesGroupPanel.Children.Add(favoritesHeader);
-
-                    var favoritesItemsControl = new ItemsControl
-                    {
-                        ItemTemplate = template,
-                        ItemsSource = favorites,
-                        Margin = new Thickness(0, 0, 0, 12)
-                    };
-                    NotesGroupPanel.Children.Add(favoritesItemsControl);
+                    rows.AddRange(BuildGroupRows("★ Favorites", favoriteBrush, favorites, "__favorites__"));
                 }
 
                 var groups = viewModels
@@ -187,70 +196,17 @@ namespace StickyNotes__
                 {
                     string categoryName = group.Key;
                     var groupItems = group.ToList();
-
                     var catBrush = GetCategoryColorBrush(categoryName);
-                    var headerPanel = new StackPanel { Orientation = Orientation.Horizontal };
-                    var headerText = new TextBlock
-                    {
-                        Text = $"{categoryName} ({groupItems.Count})",
-                        Foreground = catBrush,
-                        FontWeight = FontWeights.Bold,
-                        FontSize = 12.5,
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                    headerPanel.Children.Add(headerText);
-
-                    var addBtn = new Button
-                    {
-                        Content = "➕",
-                        ToolTip = $"Add new note to {categoryName}",
-                        Background = Brushes.Transparent,
-                        BorderThickness = new Thickness(0),
-                        Foreground = catBrush,
-                        FontSize = 10,
-                        Cursor = Cursors.Hand,
-                        Margin = new Thickness(8, 0, 0, 0),
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-
                     string currentCatName = categoryName;
-                    addBtn.PreviewMouseLeftButtonDown += (s, args) =>
-                    {
-                        args.Handled = true;
-                        CreateNewNote(currentCatName);
-                    };
-                    headerPanel.Children.Add(addBtn);
 
-                    headerPanel.ContextMenu = CreateCategoryContextMenu(categoryName, () =>
+                    var contextMenu = CreateCategoryContextMenu(categoryName, () =>
                     {
                         RefreshNotesList();
                         _noteManagerWnd?.RefreshCategoryTabs();
                     });
 
-                    var expander = new Expander
-                    {
-                        Header = headerPanel,
-                        Foreground = Brushes.White,
-                        FontWeight = FontWeights.Bold,
-                        FontSize = 12.5,
-                        Margin = new Thickness(0, 0, 0, 12),
-                        Background = Brushes.Transparent,
-                        BorderThickness = new Thickness(0)
-                    };
-
-                    expander.IsExpanded = !_expanderStates.ContainsKey(categoryName) || _expanderStates[categoryName];
-                    expander.Expanded += (s, e) => _expanderStates[categoryName] = true;
-                    expander.Collapsed += (s, e) => _expanderStates[categoryName] = false;
-
-                    var itemsControl = new ItemsControl
-                    {
-                        ItemTemplate = template,
-                        ItemsSource = groupItems,
-                        Margin = new Thickness(6, 8, 0, 0)
-                    };
-
-                    expander.Content = itemsControl;
-                    NotesGroupPanel.Children.Add(expander);
+                    rows.AddRange(BuildGroupRows(categoryName, catBrush, groupItems, categoryName,
+                        contextMenu, () => CreateNewNote(currentCatName), $"Add new note to {categoryName}"));
                 }
             }
             else
@@ -260,49 +216,54 @@ namespace StickyNotes__
 
                 if (favorites.Count > 0)
                 {
-                    var favoritesHeader = new TextBlock
-                    {
-                        Text = $"★ Favorites ({favorites.Count})",
-                        Foreground = new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07)),
-                        FontWeight = FontWeights.Bold,
-                        FontSize = 12.5,
-                        Margin = new Thickness(0, 0, 0, 8)
-                    };
-                    NotesGroupPanel.Children.Add(favoritesHeader);
-
-                    var favoritesItemsControl = new ItemsControl
-                    {
-                        ItemTemplate = template,
-                        ItemsSource = favorites,
-                        Margin = new Thickness(0, 0, 0, 12)
-                    };
-                    NotesGroupPanel.Children.Add(favoritesItemsControl);
+                    rows.AddRange(BuildGroupRows("★ Favorites", favoriteBrush, favorites, "__favorites__"));
                 }
 
-                const string notesExpanderKey = "__notes__";
-                var notesExpander = new Expander
-                {
-                    Header = $"Notes ({rest.Count})",
-                    Foreground = Brushes.White,
-                    FontWeight = FontWeights.Bold,
-                    FontSize = 12.5,
-                    Margin = new Thickness(0, 0, 0, 12),
-                    Background = Brushes.Transparent,
-                    BorderThickness = new Thickness(0)
-                };
-                notesExpander.IsExpanded = !_expanderStates.ContainsKey(notesExpanderKey) || _expanderStates[notesExpanderKey];
-                notesExpander.Expanded += (s, e) => _expanderStates[notesExpanderKey] = true;
-                notesExpander.Collapsed += (s, e) => _expanderStates[notesExpanderKey] = false;
-
-                var restItemsControl = new ItemsControl
-                {
-                    ItemTemplate = template,
-                    ItemsSource = rest,
-                    Margin = new Thickness(6, 8, 0, 0)
-                };
-                notesExpander.Content = restItemsControl;
-                NotesGroupPanel.Children.Add(notesExpander);
+                rows.AddRange(BuildGroupRows("Notes", notesBrush, rest, "__notes__"));
             }
+
+            NotesListBox.ItemsSource = rows;
+        }
+
+        private List<object> BuildGroupRows(string headerTitle, Brush accentBrush, List<NoteCardViewModel> items,
+            string expanderKey, ContextMenu? headerContextMenu = null, Action? onAddClick = null, string? addTooltip = null)
+        {
+            bool isExpanded = !_expanderStates.ContainsKey(expanderKey) || _expanderStates[expanderKey];
+
+            var solidAccent = (accentBrush as SolidColorBrush)?.Color ?? Colors.White;
+            var pillBackground = new SolidColorBrush(Color.FromArgb(0x28, solidAccent.R, solidAccent.G, solidAccent.B));
+            pillBackground.Freeze();
+
+            var header = new NoteGroupHeaderViewModel
+            {
+                Title = headerTitle,
+                AccentBrush = accentBrush,
+                PillBackground = pillBackground,
+                Count = items.Count,
+                ExpanderKey = expanderKey,
+                IsExpanded = isExpanded,
+                HeaderContextMenu = headerContextMenu,
+                OnAddClick = onAddClick,
+                AddTooltip = addTooltip ?? "Add new note"
+            };
+
+            var rows = new List<object> { header };
+            if (isExpanded) rows.AddRange(items);
+            return rows;
+        }
+
+        private void GroupHeader_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.DataContext is not NoteGroupHeaderViewModel vm) return;
+            bool currentlyExpanded = !_expanderStates.ContainsKey(vm.ExpanderKey) || _expanderStates[vm.ExpanderKey];
+            _expanderStates[vm.ExpanderKey] = !currentlyExpanded;
+            RefreshNotesList();
+        }
+
+        private void GroupHeaderAdd_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.DataContext is not NoteGroupHeaderViewModel vm) return;
+            vm.OnAddClick?.Invoke();
         }
         private static string BuildCardSnippet(string fullPlainText)
         {
@@ -337,16 +298,22 @@ namespace StickyNotes__
         private void QuickOpenButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not FrameworkElement element || element.DataContext is not NoteCardViewModel vm) return;
-            if (vm.QuickOpenItems.Count == 0) return;
 
-            if (vm.QuickOpenItems.Count == 1)
+            // Hyperlink extraction needs the note's full rich-text content, which we deliberately don't
+            // load for every card on every refresh - fetch it fresh here, once, only on click.
+            var note = DatabaseHelper.GetNote(vm.Id);
+            if (note == null) return;
+            var items = BuildQuickOpenItems(note, vm.Attachments);
+            if (items.Count == 0) return;
+
+            if (items.Count == 1)
             {
-                OpenQuickOpenItem(vm.QuickOpenItems[0]);
+                OpenQuickOpenItem(items[0]);
                 return;
             }
 
             var menu = new ContextMenu();
-            foreach (var item in vm.QuickOpenItems)
+            foreach (var item in items)
             {
                 var menuItem = new MenuItem { Header = $"{(item.IsFile ? "📎" : "🔗")} {item.Label}" };
                 var captured = item;
@@ -616,9 +583,12 @@ namespace StickyNotes__
             _sortOrder = "category";
             SortCategoryButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
             SortCategoryButton.Foreground = Brushes.White;
-            
+
             SortDateButton.Background = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255));
             SortDateButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+
+            ExpandCollapseAllButton.Visibility = Visibility.Visible;
+            UpdateExpandCollapseAllButtonLabel();
 
             RefreshNotesList();
         }
@@ -627,9 +597,60 @@ namespace StickyNotes__
             _sortOrder = "date";
             SortDateButton.Background = new SolidColorBrush(Color.FromRgb(0, 132, 255));
             SortDateButton.Foreground = Brushes.White;
-            
+
             SortCategoryButton.Background = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255));
             SortCategoryButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+
+            ExpandCollapseAllButton.Visibility = Visibility.Collapsed;
+
+            RefreshNotesList();
+        }
+        private List<string> GetCategoryGroupKeys()
+        {
+            var categories = DatabaseHelper.ListNotes(null, null)
+                .Select(n => n.Category ?? "General")
+                .Distinct()
+                .ToList();
+            return new List<string> { "__favorites__" }.Concat(categories).ToList();
+        }
+        // Label reflects what the NEXT click will do, so it stays correct even after the user
+        // manually expands/collapses a couple of groups by hand.
+        private void UpdateExpandCollapseAllButtonLabel()
+        {
+            bool anyCollapsed = GetCategoryGroupKeys().Any(key => _expanderStates.TryGetValue(key, out var expanded) && !expanded);
+            ExpandCollapseAllButton.Content = anyCollapsed ? "Expand All" : "Collapse All";
+        }
+        private void ExpandCollapseAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            var groupKeys = GetCategoryGroupKeys();
+            bool anyCollapsed = groupKeys.Any(key => _expanderStates.TryGetValue(key, out var expanded) && !expanded);
+
+            foreach (var key in groupKeys)
+            {
+                _expanderStates[key] = anyCollapsed;
+            }
+
+            RefreshNotesList();
+            UpdateExpandCollapseAllButtonLabel();
+        }
+        private void SizeSmallButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Small");
+        private void SizeMediumButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Medium");
+        private void SizeLargeButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Large");
+        private void SetCardSize(string size)
+        {
+            _cardSize = size;
+
+            var active = new SolidColorBrush(Color.FromRgb(0, 132, 255));
+            var inactive = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255));
+            var activeFg = Brushes.White;
+            var inactiveFg = new SolidColorBrush(Color.FromRgb(136, 136, 136));
+
+            SizeSmallButton.Background = size == "Small" ? active : inactive;
+            SizeSmallButton.Foreground = size == "Small" ? activeFg : inactiveFg;
+            SizeMediumButton.Background = size == "Medium" ? active : inactive;
+            SizeMediumButton.Foreground = size == "Medium" ? activeFg : inactiveFg;
+            SizeLargeButton.Background = size == "Large" ? active : inactive;
+            SizeLargeButton.Foreground = size == "Large" ? activeFg : inactiveFg;
 
             RefreshNotesList();
         }
@@ -651,6 +672,52 @@ namespace StickyNotes__
                 menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
                 menu.IsOpen = true;
             }
+        }
+        // Right-click anywhere on a note card (that isn't a more specific element, like a tag chip,
+        // with its own context menu) shows this. Reuses the same handlers as the toolbar icons
+        // (color palette, delete) so there's one source of truth for each action.
+        private void CardBorder_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is not Border border || border.DataContext is not NoteCardViewModel noteVm) return;
+
+            int noteId = noteVm.Id;
+            var menu = new ContextMenu();
+
+            var openItem = new MenuItem { Header = "Open", Tag = noteId };
+            openItem.Click += OpenNoteFromCard_Click;
+            menu.Items.Add(openItem);
+
+            var favoriteItem = new MenuItem { Header = noteVm.IsFavorite ? "Remove from Favorites" : "Add to Favorites" };
+            favoriteItem.Click += (s, args) =>
+            {
+                var note = DatabaseHelper.GetNote(noteId);
+                if (note != null)
+                {
+                    DatabaseHelper.SetFavorite(noteId, !note.IsFavorite);
+                    RefreshNotesList();
+                }
+            };
+            menu.Items.Add(favoriteItem);
+
+            menu.Items.Add(new Separator());
+
+            // Flat list rather than a submenu: the app's global MenuItem style doesn't implement
+            // a submenu popup, so a nested "Change Color" menu would never be able to open.
+            var colors = new[] { ("Yellow", "yellow"), ("Green", "green"), ("Pink", "pink"), ("Purple", "purple"), ("Blue", "blue"), ("Charcoal", "charcoal") };
+            foreach (var (name, key) in colors)
+            {
+                var item = new MenuItem { Header = $"🎨 {name}", Tag = noteId, CommandParameter = key };
+                item.Click += ChangeColorFromCard_Click;
+                menu.Items.Add(item);
+            }
+
+            menu.Items.Add(new Separator());
+
+            var deleteItem = new MenuItem { Header = "Delete", Tag = noteId };
+            deleteItem.Click += DeleteNoteFromCard_Click;
+            menu.Items.Add(deleteItem);
+
+            border.ContextMenu = menu;
         }
         private void OpenNoteFromCard_Click(object sender, RoutedEventArgs e)
         {
@@ -780,6 +847,32 @@ namespace StickyNotes__
         public bool IsFile { get; set; }
     }
 
+    // A row in the flat, virtualized notes list representing a collapsible group (Favorites/category/Notes).
+    public class NoteGroupHeaderViewModel
+    {
+        public string Title { get; set; } = "";
+        public Brush AccentBrush { get; set; } = Brushes.White;
+        public Brush PillBackground { get; set; } = Brushes.Transparent;
+        public int Count { get; set; }
+        public string ExpanderKey { get; set; } = "";
+        public bool IsExpanded { get; set; }
+        public ContextMenu? HeaderContextMenu { get; set; }
+        public Action? OnAddClick { get; set; }
+        public string AddTooltip { get; set; } = "Add new note";
+        public Visibility AddButtonVisibility => OnAddClick != null ? Visibility.Visible : Visibility.Collapsed;
+        public string ChevronGlyph => IsExpanded ? "▾" : "▸";
+    }
+
+    // Picks the group-header row template vs. the note-card template for the flat notes ListBox.
+    public class NotesRowTemplateSelector : DataTemplateSelector
+    {
+        public override DataTemplate? SelectTemplate(object item, DependencyObject container)
+        {
+            var element = container as FrameworkElement;
+            string key = item is NoteGroupHeaderViewModel ? "NoteGroupHeaderTemplate" : "NoteCardTemplate";
+            return element?.FindResource(key) as DataTemplate;
+        }
+    }
 
     public class NoteCardViewModel
     {
@@ -792,8 +885,21 @@ namespace StickyNotes__
         public List<string> Tags { get; set; } = new List<string>();
         public string Category { get; set; } = "General";
         public bool IsFavorite { get; set; }
+        public bool IsSecure { get; set; }
         public DateTime UpdatedAt { get; set; }
-        public List<QuickOpenItem> QuickOpenItems { get; set; } = new List<QuickOpenItem>();
+        public string CardSize { get; set; } = "Medium";
+
+
+        // Preloaded once per refresh via DatabaseHelper.GetAllNoteAttachmentsMap() to avoid an N+1
+        // DB query per card (previously ImageVisibility/ThumbnailSource each queried per note).
+        public List<NoteAttachment> Attachments { get; set; } = new List<NoteAttachment>();
+        // Cheap substring check computed once in RefreshNotesList from the already-loaded plain text,
+        // used only to decide whether to show the quick-open button - the real hyperlink extraction
+        // (which requires a full rich-text parse) only runs when the button is actually clicked.
+        public bool HasLikelyLink { get; set; }
+
+        public Visibility SnippetVisibility => CardSize == "Small" ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility TagsRowVisibility => CardSize == "Small" ? Visibility.Collapsed : Visibility.Visible;
 
         public string DateText
         {
@@ -809,19 +915,35 @@ namespace StickyNotes__
             }
         }
 
+        private static readonly Brush FavoriteOnBrush = FrozenBrush(0xff, 0xff, 0xc1, 0x07);
+        private static readonly Brush FavoriteOffBrush = FrozenBrush(0x80, 0xff, 0xff, 0xff);
+        private static Brush FrozenBrush(byte a, byte r, byte g, byte b)
+        {
+            var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(a, r, g, b));
+            brush.Freeze();
+            return brush;
+        }
+
         public string FavoriteIcon => IsFavorite ? "★" : "☆";
-        public Brush FavoriteBrush => IsFavorite ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xff, 0xc1, 0x07)) : new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x80, 0xff, 0xff, 0xff));
+        public Brush FavoriteBrush => IsFavorite ? FavoriteOnBrush : FavoriteOffBrush;
         public string FavoriteToolTip => IsFavorite ? "Unpin favorite" : "Mark as favorite";
 
-        public string DisplayTitle => string.IsNullOrEmpty(Title) ? "Sticky Note" : Title;
+        public string DisplayTitle => (IsSecure ? "🔒 " : "") + (string.IsNullOrEmpty(Title) ? "Sticky Note" : Title);
 
-        public Visibility QuickOpenVisibility => QuickOpenItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility QuickOpenVisibility => (Attachments.Count > 0 || HasLikelyLink) ? Visibility.Visible : Visibility.Collapsed;
 
-        public string QuickOpenIcon => (QuickOpenItems.Any(i => i.IsFile) ? "📎" : "🔗") + "️";
+        public string QuickOpenIcon => (Attachments.Count > 0 ? "📎" : "🔗") + "️";
 
-        public string QuickOpenToolTip => QuickOpenItems.Count == 1
-            ? $"Open {QuickOpenItems[0].Label}"
-            : $"Open ({QuickOpenItems.Count} links/files)";
+        public string QuickOpenToolTip
+        {
+            get
+            {
+                if (Attachments.Count == 1 && !HasLikelyLink) return $"Open {Attachments[0].FileName}";
+                if (Attachments.Count > 1 && !HasLikelyLink) return $"Open ({Attachments.Count} files)";
+                if (Attachments.Count == 0 && HasLikelyLink) return "Open link";
+                return "Open attached files/links";
+            }
+        }
 
         public string TagsList => Tags.Count > 0 ? string.Join("  ", Tags.Select(t => $"#{t}")) : "";
 
@@ -829,19 +951,16 @@ namespace StickyNotes__
         {
             get
             {
+                if (CardSize == "Small") return Visibility.Collapsed;
                 if (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath))
                 {
                     return Visibility.Visible;
                 }
-                var attachments = DatabaseHelper.GetNoteAttachments(Id);
-                if (attachments != null)
+                foreach (var att in Attachments)
                 {
-                    foreach (var att in attachments)
+                    if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
                     {
-                        if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
-                        {
-                            return Visibility.Visible;
-                        }
+                        return Visibility.Visible;
                     }
                 }
                 return Visibility.Collapsed;
@@ -859,7 +978,7 @@ namespace StickyNotes__
 
         public double TaskProgressPercentage => TotalTasks > 0 ? ((double)CompletedTasks / TotalTasks) * 100 : 0;
         public string TaskStatsText => $"{CompletedTasks} of {TotalTasks} tasks";
-        public Visibility TaskProgressVisibility => TotalTasks > 0 ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility TaskProgressVisibility => (CardSize != "Small" && TotalTasks > 0) ? Visibility.Visible : Visibility.Collapsed;
 
         private int CountOccurrences(string text, string pattern)
         {
@@ -874,6 +993,10 @@ namespace StickyNotes__
             return count;
         }
 
+        // Decoded thumbnails are cached across refreshes (keyed by path + last-write time so an edited/replaced
+        // file at the same path still invalidates) so re-decoding from disk doesn't happen on every list refresh.
+        private static readonly Dictionary<string, BitmapImage> ThumbnailCache = new Dictionary<string, BitmapImage>();
+
         public BitmapImage? ThumbnailSource
         {
             get
@@ -885,21 +1008,24 @@ namespace StickyNotes__
                 }
                 else
                 {
-                    var attachments = DatabaseHelper.GetNoteAttachments(Id);
-                    if (attachments != null)
+                    foreach (var att in Attachments)
                     {
-                        foreach (var att in attachments)
+                        if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
                         {
-                            if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
-                            {
-                                path = att.FilePath;
-                                break;
-                            }
+                            path = att.FilePath;
+                            break;
                         }
                     }
                 }
 
                 if (path == null) return null;
+
+                string cacheKey;
+                try { cacheKey = $"{path}|{File.GetLastWriteTimeUtc(path).Ticks}"; }
+                catch { cacheKey = path; }
+
+                if (ThumbnailCache.TryGetValue(cacheKey, out var cached)) return cached;
+
                 try
                 {
                     var bitmap = new BitmapImage();
@@ -908,6 +1034,8 @@ namespace StickyNotes__
                     bitmap.DecodePixelWidth = 100;
                     bitmap.UriSource = new Uri(path);
                     bitmap.EndInit();
+                    bitmap.Freeze();
+                    ThumbnailCache[cacheKey] = bitmap;
                     return bitmap;
                 }
                 catch
@@ -917,7 +1045,7 @@ namespace StickyNotes__
             }
         }
 
-        private static readonly Dictionary<string, (string bg, string border, string text)> ColorsConfig = 
+        private static readonly Dictionary<string, (string bg, string border, string text)> ColorsConfig =
             new Dictionary<string, (string bg, string border, string text)>
         {
             { "yellow", ("#3C221C12", "#D49A13", "#ffffff") },
@@ -928,35 +1056,27 @@ namespace StickyNotes__
             { "charcoal", ("#3C1B1B1B", "#424242", "#ffffff") }
         };
 
-        public System.Windows.Media.Brush CardBackground
+        // Brushes are parsed once and frozen instead of re-parsed via BrushConverter on every binding access
+        // (each card binds CardBackground/CardHeaderBrush/CardTextBrush multiple times).
+        private static readonly Dictionary<string, (Brush bg, Brush border, Brush text)> BrushCache = BuildBrushCache();
+        private static Dictionary<string, (Brush bg, Brush border, Brush text)> BuildBrushCache()
         {
-            get
+            var converter = new System.Windows.Media.BrushConverter();
+            var result = new Dictionary<string, (Brush, Brush, Brush)>();
+            foreach (var kvp in ColorsConfig)
             {
-                string key = Color;
-                if (!ColorsConfig.ContainsKey(key)) key = "yellow";
-                return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(ColorsConfig[key].bg)!;
+                Brush bg = (Brush)converter.ConvertFromString(kvp.Value.bg)!; bg.Freeze();
+                Brush border = (Brush)converter.ConvertFromString(kvp.Value.border)!; border.Freeze();
+                Brush text = (Brush)converter.ConvertFromString(kvp.Value.text)!; text.Freeze();
+                result[kvp.Key] = (bg, border, text);
             }
+            return result;
         }
+        private (Brush bg, Brush border, Brush text) CardBrushes => BrushCache.TryGetValue(Color, out var c) ? c : BrushCache["yellow"];
 
-        public System.Windows.Media.Brush CardHeaderBrush
-        {
-            get
-            {
-                string key = Color;
-                if (!ColorsConfig.ContainsKey(key)) key = "yellow";
-                return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(ColorsConfig[key].border)!;
-            }
-        }
-
-        public System.Windows.Media.Brush CardTextBrush
-        {
-            get
-            {
-                string key = Color;
-                if (!ColorsConfig.ContainsKey(key)) key = "yellow";
-                return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(ColorsConfig[key].text)!;
-            }
-        }
+        public Brush CardBackground => CardBrushes.bg;
+        public Brush CardHeaderBrush => CardBrushes.border;
+        public Brush CardTextBrush => CardBrushes.text;
     }
 
 }

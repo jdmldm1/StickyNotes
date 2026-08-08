@@ -5,12 +5,14 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace StickyNotes__
 {
     public partial class SpotlightWindow : Window
     {
         private readonly MainWindow _mainWnd;
+        private DispatcherTimer? _searchDebounceTimer;
 
         public SpotlightWindow(MainWindow mainWnd)
         {
@@ -30,6 +32,7 @@ namespace StickyNotes__
             ("/manager",  "Open the Note Manager",               "─"),
             ("/snip",     "Take a region screenshot",            "Win+Alt+S"),
             ("/capture",  "Open Quick Capture",                  "Win+Alt+Q"),
+            ("/clipboard", "Open Clipboard History",             "─"),
         };
 
         public void FocusSearch()
@@ -74,7 +77,21 @@ namespace StickyNotes__
             this.Hide();
         }
 
-        private void SearchInput_TextChanged(object sender, TextChangedEventArgs e) => RunSearch();
+        // Coalesces rapid keystrokes so search doesn't run a full DB query + snippet rebuild per character.
+        private void SearchInput_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_searchDebounceTimer == null)
+            {
+                _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+                _searchDebounceTimer.Tick += (s, args) =>
+                {
+                    _searchDebounceTimer!.Stop();
+                    RunSearch();
+                };
+            }
+            _searchDebounceTimer.Stop();
+            _searchDebounceTimer.Start();
+        }
 
         private void Filter_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -117,7 +134,7 @@ namespace StickyNotes__
                 Id = n.Id,
                 Title = n.Title,
                 Color = n.Color,
-                Snippet = BuildContextSnippet(NoteContentHelper.ExtractPlainText(n.Content), query),
+                Snippet = BuildContextSnippet(n.PlainText, query),
                 ImagePath = n.ImagePath
             }).ToList();
 
@@ -160,6 +177,12 @@ namespace StickyNotes__
             }
             else if (e.Key == Key.Enter)
             {
+                // Flush a pending debounced search so Enter always acts on the latest text, not a stale result set.
+                if (_searchDebounceTimer != null && _searchDebounceTimer.IsEnabled)
+                {
+                    _searchDebounceTimer.Stop();
+                    RunSearch();
+                }
                 OpenSelected();
                 e.Handled = true;
             }
@@ -226,6 +249,9 @@ namespace StickyNotes__
                     break;
                 case "/capture":
                     _mainWnd.ToggleQuickCapture();
+                    break;
+                case "/clipboard":
+                    _mainWnd.OpenClipboardPicker();
                     break;
             }
         }

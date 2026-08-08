@@ -141,11 +141,91 @@ namespace StickyNotes__
             menu.Items.Add(saveAsTemplateItem);
             menu.Items.Add(new Separator());
 
+            var secureItem = new MenuItem { Header = _note.IsSecure ? "🔓 Remove Security" : "🔒 Make Secure Note" };
+            secureItem.Click += (s, args) => ToggleSecureNote();
+            menu.Items.Add(secureItem);
+            menu.Items.Add(new Separator());
+
             var deleteItem = new MenuItem { Header = "Delete Note" };
             deleteItem.Click += (s, args) => DeleteNote();
             menu.Items.Add(deleteItem);
 
             menu.IsOpen = true;
+        }
+        private void ToggleSecureNote()
+        {
+            var main = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
+
+            if (_note.IsSecure)
+            {
+                // Removing security: decrypt back to plain content permanently.
+                if (!VaultService.IsUnlocked)
+                {
+                    var unlockDialog = new PasswordDialog("Enter your vault password to remove security from this note.", "Unlock Vault") { Owner = this };
+                    if (unlockDialog.ShowDialog() != true) return;
+                    if (!VaultService.TryUnlock(unlockDialog.Password))
+                    {
+                        MessageBox.Show("Incorrect password.", "Unlock Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                }
+
+                string plainXaml;
+                try
+                {
+                    plainXaml = string.IsNullOrEmpty(_note.Content) ? "" : VaultService.Decrypt(_note.Content);
+                }
+                catch
+                {
+                    MessageBox.Show("Couldn't decrypt this note - the content may be corrupted.", "Remove Security Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                _note.IsSecure = false;
+                _note.Content = plainXaml;
+                DatabaseHelper.UpdateNote(_note);
+
+                LoadNoteData();
+                main?.RefreshNotesList();
+                main?.RefreshTagsFilter();
+                main?.ShowStatusToast("Security removed 🔓");
+            }
+            else
+            {
+                // Making secure: ensure a vault password exists and is unlocked, then encrypt the
+                // note's current content and strip any plain_text/ocr_text (handled by UpdateNote).
+                if (!VaultService.IsConfigured)
+                {
+                    var setupDialog = new PasswordDialog(
+                        "Set a password for your secure notes vault. This protects all notes you mark as secure.\n\nThere is no way to recover this password if you forget it.",
+                        "Set Up Secure Notes", confirm: true) { Owner = this };
+                    if (setupDialog.ShowDialog() != true) return;
+                    VaultService.SetupVault(setupDialog.Password);
+                }
+                else if (!VaultService.IsUnlocked)
+                {
+                    var unlockDialog = new PasswordDialog("Enter your vault password to make this note secure.", "Unlock Vault") { Owner = this };
+                    if (unlockDialog.ShowDialog() != true) return;
+                    if (!VaultService.TryUnlock(unlockDialog.Password))
+                    {
+                        MessageBox.Show("Incorrect password.", "Unlock Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                }
+
+                SaveNoteContent(); // flush any pending edits into _note.Content first (still plaintext at this point)
+                string plainXaml = _note.Content;
+
+                _note.IsSecure = true;
+                _note.Content = VaultService.Encrypt(plainXaml);
+                _note.OcrText = null;
+                DatabaseHelper.UpdateNote(_note);
+
+                LoadNoteData();
+                main?.RefreshNotesList();
+                main?.RefreshTagsFilter();
+                main?.ShowStatusToast("Note is now secure 🔒");
+            }
         }
         public void ChangeColor(string colorKey)
         {

@@ -7,6 +7,65 @@
         WindowStartupLocation="CenterScreen"
         Loaded="Window_Loaded" Closing="Window_Closing">
 
+    <Window.Resources>
+        <!-- Virtualized notes list row (see NotesListPanel below) -->
+        <DataTemplate x:Key="NoteListItemTemplate">
+            <Border Padding="10,8,10,8" Margin="0,0,0,6" CornerRadius="6" Background="{Binding SelectedBackground}" Cursor="Hand"
+                    MouseLeftButtonUp="NoteListItem_Click">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="★ " Foreground="#ffc107" FontSize="11.5" Visibility="{Binding FavoriteVisibility}"/>
+                        <TextBlock Text="{Binding Title}" Foreground="White" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Snippet}" Foreground="#B0ffffff" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"
+                               Visibility="{Binding SnippetVisibility}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Thin, theme-matching vertical scrollbar (replaces the default OS scrollbar) -->
+        <Style x:Key="ManagerThinScrollBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid SnapsToDevicePixels="true">
+                            <Track x:Name="PART_Track" IsDirectionReversed="true" IsEnabled="{TemplateBinding IsEnabled}">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#30ffffff" CornerRadius="3"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Bare-bones container so ListBoxItem contributes no selection/hover chrome of its own -->
+        <Style x:Key="ManagerListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Border x:Name="WindowBorder" Background="#F2141414" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="10">
         <Grid>
             <Grid.RowDefinitions>
@@ -40,33 +99,41 @@
             <!-- Body -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="200"/>
                     <ColumnDefinition Width="290"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Colored Category Tabs (OneNote-style section list) -->
-                <Border Grid.Column="0" Background="#14ffffff">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel x:Name="CategoryTabsPanel" Margin="0,10,0,10"/>
-                        </ScrollViewer>
-
-                        <!-- Pinned at the bottom of the category list, left-aligned like an action item rather than a filter tab -->
-                        <Border Grid.Row="1" BorderBrush="#20ffffff" BorderThickness="0,1,0,0">
-                            <Button x:Name="AddCategoryButton" Click="AddCategoryButton_Click" ToolTip="Add a new category"
-                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                    HorizontalContentAlignment="Left" Padding="14,10" Height="40">
-                                <TextBlock Text="+ New Category" Foreground="#99ffffff" FontSize="11" FontStyle="Italic"/>
-                            </Button>
-                        </Border>
-                    </Grid>
-                </Border>
+<!-- Colored Category Tabs (OneNote-style section list) -->
+<Border Grid.Column="0" Background="#14ffffff">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- Collapse toggle -->
+            <RowDefinition Height="*"/> <!-- Category list -->
+            <RowDefinition Height="Auto"/> <!-- Add Category button -->
+        </Grid.RowDefinitions>
+        <!-- Collapse toggle button -->
+        <ToggleButton x:Name="CategoryCollapseButton" Grid.Row="0" Width="24" Height="24" Margin="4" Background="Transparent" BorderThickness="0" Cursor="Hand" Click="CategoryCollapseButton_Click">
+            <Path Data="M0,0 L6,6 L0,12" Stroke="White" StrokeThickness="1.8" RenderTransformOrigin="0.5,0.5">
+                <Path.RenderTransform>
+                    <RotateTransform x:Name="CategoryCollapseRotate" Angle="0"/>
+                </Path.RenderTransform>
+            </Path>
+        </ToggleButton>
+        <!-- Category tabs list -->
+        <ScrollViewer x:Name="CategoryScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="CategoryTabsPanel" Margin="0,10,0,10"/>
+        </ScrollViewer>
+        <!-- Pinned at the bottom of the category list -->
+        <Border Grid.Row="2" BorderBrush="#20ffffff" BorderThickness="0,1,0,0">
+            <Button x:Name="AddCategoryButton" Click="AddCategoryButton_Click" ToolTip="Add a new category"
+                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                    HorizontalContentAlignment="Left" Padding="14,10" Height="40">
+                <TextBlock Text="+ New Category" Foreground="#99ffffff" FontSize="11" FontStyle="Italic"/>
+            </Button>
+        </Border>
+    </Grid>
+</Border>
 
                 <!-- Notes List -->
                 <Border Grid.Column="1" Background="#0Affffff" BorderBrush="#20ffffff" BorderThickness="0,0,1,0">
@@ -80,18 +147,44 @@
                         <TextBlock x:Name="CategoryHeaderText" Grid.Row="0" Text="All Notes" FontSize="17" FontWeight="Bold"
                                    Foreground="#ffffff" Margin="0,0,0,10" TextTrimming="CharacterEllipsis"/>
 
-                        <TextBox x:Name="ManagerSearchBox" Grid.Row="1" TextChanged="ManagerSearchBox_TextChanged"
-                                 Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="0" CaretBrush="White" Margin="0,0,0,10">
-                            <TextBox.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="6"/>
-                                </Style>
-                            </TextBox.Resources>
-                        </TextBox>
+                        <Grid Grid.Row="1" Margin="0,0,0,10">
+                            <TextBox x:Name="ManagerSearchBox" TextChanged="ManagerSearchBox_TextChanged"
+                                     Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="1" BorderBrush="#22ffffff" CaretBrush="White">
+                                <TextBox.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="6"/>
+                                    </Style>
+                                </TextBox.Resources>
+                            </TextBox>
+                            <TextBlock IsHitTestVisible="False" Text="Search notes..." VerticalAlignment="Center" HorizontalAlignment="Left"
+                                       Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="12">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=ManagerSearchBox}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
 
-                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                            <StackPanel x:Name="NotesListPanel"/>
-                        </ScrollViewer>
+                        <ListBox x:Name="NotesListPanel" Grid.Row="2"
+                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.CanContentScroll="True"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                 VirtualizingPanel.ScrollUnit="Pixel"
+                                 ItemTemplate="{StaticResource NoteListItemTemplate}"
+                                 ItemContainerStyle="{StaticResource ManagerListBoxItemStyle}">
+                            <ListBox.Resources>
+                                <Style TargetType="ScrollBar" BasedOn="{StaticResource ManagerThinScrollBar}"/>
+                            </ListBox.Resources>
+                        </ListBox>
                     </Grid>
                 </Border>
 
@@ -247,14 +340,25 @@
                         </WrapPanel>
                     </Border>
 
-                    <RichTextBox x:Name="ManagerRichTextBox" Grid.Row="2" Background="Transparent" BorderThickness="0"
-                                 Foreground="#ffffff" CaretBrush="White" FontFamily="Segoe UI Variable Text, Segoe UI, sans-serif"
-                                 FontSize="14" Visibility="Collapsed"
-                                 TextChanged="ManagerRichTextBox_TextChanged"
-                                 PreviewMouseLeftButtonDown="ManagerRichTextBox_PreviewMouseLeftButtonDown"
-                                 AcceptsReturn="True" AcceptsTab="True"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                    <DockPanel Grid.Row="2" LastChildFill="True">
+                        <!-- Screenshot/image attached directly to the note (note.ImagePath) - previously only shown
+                             in the sidebar card thumbnail and the standalone NoteWindow editor, not here. -->
+                        <Border x:Name="EditorImageBorder" DockPanel.Dock="Top" MaxHeight="180" Margin="0,0,0,8"
+                                CornerRadius="6" ClipToBounds="True" Visibility="Collapsed"
+                                Cursor="Hand" ToolTip="Click to view full size"
+                                MouseLeftButtonUp="EditorImage_Click">
+                            <Image x:Name="EditorNoteImage" Stretch="Uniform" HorizontalAlignment="Left"/>
+                        </Border>
+
+                        <RichTextBox x:Name="ManagerRichTextBox" Background="Transparent" BorderThickness="0"
+                                     Foreground="#ffffff" CaretBrush="White" FontFamily="Segoe UI Variable Text, Segoe UI, sans-serif"
+                                     FontSize="14" Visibility="Collapsed"
+                                     TextChanged="ManagerRichTextBox_TextChanged"
+                                     PreviewMouseLeftButtonDown="ManagerRichTextBox_PreviewMouseLeftButtonDown"
+                                     AcceptsReturn="True" AcceptsTab="True"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                    </DockPanel>
 
                     <!-- AI Chat Panel (collapsed by default) -->
                     <Border x:Name="AiChatPanel" Grid.Row="3" Height="180" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="1" CornerRadius="6" Margin="0,8,0,0" Visibility="Collapsed">

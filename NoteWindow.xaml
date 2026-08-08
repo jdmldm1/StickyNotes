@@ -250,6 +250,25 @@
                                           VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                           Background="Transparent"/>
 
+                <!-- Locked Secure Note Overlay (Row 0 - fully opaque, hides the editor/ciphertext underneath) -->
+                <Border x:Name="LockedOverlay" Grid.Row="0" Background="#F2141414" Visibility="Collapsed">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="220">
+                        <TextBlock Text="🔒" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                        <TextBlock Text="This note is secure" Foreground="#e0e0e0" FontSize="13" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                        <TextBlock Text="Enter your vault password to view it." Foreground="#88ffffff" FontSize="11"
+                                   HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,14"/>
+                        <Button Content="Unlock" Click="UnlockNoteButton_Click" Width="100" Height="30"
+                                Background="#0084ff" Foreground="White" FontWeight="Bold" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Center">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
                 <!-- Word count / reading time footer (overlays bottom-right of the editor) -->
                 <TextBlock x:Name="WordCountText" Grid.Row="0" Text="0 words" Foreground="#66ffffff" FontSize="9.5"
                            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,6" IsHitTestVisible="False"/>

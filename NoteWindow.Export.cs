@@ -53,8 +53,56 @@ namespace StickyNotes__
             copyItem.Click += (s, args) => CopyImageToClipboard();
             menu.Items.Add(copyItem);
 
+            var reOcrItem = new MenuItem { Header = "Re-run OCR" };
+            reOcrItem.Click += async (s, args) => await ReRunOcrAsync();
+            menu.Items.Add(reOcrItem);
+
             menu.IsOpen = true;
             e.Handled = true;
+        }
+        private async Task ReRunOcrAsync()
+        {
+            if (string.IsNullOrEmpty(_note.ImagePath) || !File.Exists(_note.ImagePath)) return;
+
+            var main = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
+            try
+            {
+                var ocrResult = await OcrHelper.PerformOcrAsync(_note.ImagePath);
+                string ocrText = ocrResult.Text ?? "";
+                if (string.IsNullOrWhiteSpace(ocrText))
+                {
+                    main?.ShowStatusToast("No text found in this image");
+                    return;
+                }
+
+                _note.OcrText = ocrText;
+
+                string currentPlainText = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd).Text.Trim();
+                if (string.IsNullOrEmpty(currentPlainText))
+                {
+                    var doc = new FlowDocument();
+                    doc.Blocks.Add(new Paragraph(new Run(ocrText)));
+                    var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+                    _note.Content = NoteContentHelper.SaveRange(range);
+                }
+
+                DatabaseHelper.UpdateNote(_note);
+
+                foreach (var tag in ocrResult.Tags)
+                {
+                    if (!string.IsNullOrWhiteSpace(tag))
+                        DatabaseHelper.AddTagToNote(_note.Id, tag);
+                }
+
+                ReloadNoteFromDb();
+                main?.RefreshNotesList();
+                main?.RefreshTagsFilter();
+                main?.ShowStatusToast("OCR text updated ✓");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("OCR failed: " + ex.Message, "Re-run OCR", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
         private void CopyImageToClipboard()
         {

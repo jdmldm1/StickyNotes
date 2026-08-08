@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -26,6 +27,10 @@ namespace StickyNotes__
         public string JeffsNotesUrl { get; set; } = "";
         public int JeffsNotesSyncIntervalMinutes { get; set; } = 15;
         public string JeffsNotesLastSyncedAt { get; set; } = "";
+
+        // Secure Notes vault: only a salt and a verifier hash, never the password itself. See VaultService.
+        public string VaultSalt { get; set; } = "";
+        public string VaultVerifier { get; set; } = "";
     }
 
     public partial class SettingsWindow : Window
@@ -197,6 +202,98 @@ namespace StickyNotes__
             {
                 AutoOrganizeSettingsButton.IsEnabled = true;
                 AutoOrganizeSettingsButton.Content = originalContent;
+            }
+        }
+
+        private async void OcrBackfillButton_Click(object sender, RoutedEventArgs e)
+        {
+            var main = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
+            if (main == null) return;
+
+            OcrBackfillButton.IsEnabled = false;
+            string originalContent = OcrBackfillButton.Content.ToString() ?? "🔍 Scan Screenshots for Missing OCR Text";
+            OcrBackfillButton.Content = "🔍 Scanning...";
+            OcrBackfillStatusTextBlock.Text = "";
+
+            try
+            {
+                int updated = await main.RunOcrBackfillAsync();
+                OcrBackfillStatusTextBlock.Text = updated == 0
+                    ? "Every screenshot note already has OCR text."
+                    : $"Filled in OCR text for {updated} note{(updated == 1 ? "" : "s")}.";
+            }
+            catch (Exception ex)
+            {
+                OcrBackfillStatusTextBlock.Text = "Scan failed: " + ex.Message;
+            }
+            finally
+            {
+                OcrBackfillButton.IsEnabled = true;
+                OcrBackfillButton.Content = originalContent;
+            }
+        }
+
+        private void LockVaultButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!VaultService.IsConfigured)
+            {
+                MessageBox.Show("You haven't set up a secure notes vault yet - mark a note as secure first (right-click it → Make Secure Note).", "No Vault Set Up", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            VaultService.Lock();
+            MessageBox.Show("Vault locked. You'll need your password again to view any secure note.", "Vault Locked", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void ChangeVaultPasswordButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!VaultService.IsConfigured)
+            {
+                MessageBox.Show("You haven't set up a secure notes vault yet - mark a note as secure first (right-click it → Make Secure Note).", "No Vault Set Up", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!VaultService.IsUnlocked)
+            {
+                var currentDialog = new PasswordDialog("Enter your current vault password to continue:", "Vault Password", confirm: false);
+                if (currentDialog.ShowDialog() != true) return;
+
+                if (!VaultService.TryUnlock(currentDialog.Password))
+                {
+                    MessageBox.Show("Incorrect password.", "Change Vault Password", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+            }
+
+            var newDialog = new PasswordDialog("Choose a new vault password:", "Change Vault Password", confirm: true);
+            if (newDialog.ShowDialog() != true) return;
+
+            ChangeVaultPasswordStatusTextBlock.Text = "Re-encrypting secure notes...";
+            ChangeVaultPasswordButton.IsEnabled = false;
+
+            try
+            {
+                byte[] oldKey = VaultService.ChangePassword(newDialog.Password);
+
+                var secureNotes = DatabaseHelper.ListNotes().Where(n => n.IsSecure).ToList();
+                foreach (var note in secureNotes)
+                {
+                    note.Content = VaultService.ReEncrypt(note.Content, oldKey);
+                    DatabaseHelper.UpdateNote(note);
+                }
+                Array.Clear(oldKey, 0, oldKey.Length);
+
+                ChangeVaultPasswordStatusTextBlock.Text = $"Vault password changed. Re-encrypted {secureNotes.Count} secure note{(secureNotes.Count == 1 ? "" : "s")}.";
+                (Owner as MainWindow ?? Application.Current.MainWindow as MainWindow)?.RefreshNotesList();
+            }
+            catch (Exception ex)
+            {
+                ChangeVaultPasswordStatusTextBlock.Text = "Failed to change password: " + ex.Message;
+                MessageBox.Show("Something went wrong changing your vault password. Your old password may still work - please verify your secure notes are still accessible.", "Change Vault Password", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                ChangeVaultPasswordButton.IsEnabled = true;
             }
         }
 

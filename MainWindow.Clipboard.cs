@@ -26,7 +26,7 @@ namespace StickyNotes__
         private System.Windows.Threading.DispatcherTimer? _clipboardTimer;
         private readonly List<ClipboardHistoryItem> _clipboardHistory = new List<ClipboardHistoryItem>();
         private int _lastClipboardSequence = -1;
-        private void OpenClipboardPicker()
+        public void OpenClipboardPicker()
         {
             if (_clipboardPickerWnd == null || !_clipboardPickerWnd.IsLoaded)
             {

@@ -90,6 +90,7 @@ namespace StickyNotes__
         public int Id { get; set; }
         public string Title { get; set; } = "";
         public string Content { get; set; } = "";
+        public string PlainText { get; set; } = "";
         public string? ImagePath { get; set; }
         public string? OcrText { get; set; }
         public string Color { get; set; } = "yellow";
@@ -104,6 +105,7 @@ namespace StickyNotes__
         public string Category { get; set; } = "General";
         public bool IsFavorite { get; set; }
         public bool IsTemplate { get; set; }
+        public bool IsSecure { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }
@@ -142,6 +144,11 @@ namespace StickyNotes__
             {
                 conn.Open();
                 var cmd = conn.CreateCommand();
+
+                // WAL mode allows concurrent readers/writers and avoids taking a whole-file lock on every write,
+                // which matters once the notes list is doing frequent background saves alongside list refreshes.
+                cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+                cmd.ExecuteNonQuery();
 
                 cmd.CommandText = @"
                     CREATE TABLE IF NOT EXISTS notes (
@@ -269,6 +276,16 @@ namespace StickyNotes__
 
                 try
                 {
+                    // Secure notes store AES-GCM-encrypted content (see VaultService) instead of plain
+                    // XamlPackage. plain_text/ocr_text are intentionally left empty for these notes so
+                    // no sensitive snippet ever lands in search results or list previews while locked.
+                    cmd.CommandText = "ALTER TABLE notes ADD COLUMN is_secure INTEGER DEFAULT 0;";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
+                try
+                {
                     cmd.CommandText = "ALTER TABLE note_attachments ADD COLUMN ocr_text TEXT;";
                     cmd.ExecuteNonQuery();
                 }
@@ -302,6 +319,17 @@ namespace StickyNotes__
                     cmd.ExecuteNonQuery();
                 }
                 catch {}
+
+                // Supporting indexes for the columns ListNotes()/RefreshNotesList() filter and sort on.
+                cmd.CommandText = @"
+                    CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
+                    CREATE INDEX IF NOT EXISTS idx_notes_favorite_pinned ON notes(is_favorite, is_pinned_desktop);
+                    CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category);
+                    CREATE INDEX IF NOT EXISTS idx_note_tags_note_id ON note_tags(note_id);
+                    CREATE INDEX IF NOT EXISTS idx_note_tags_tag_id ON note_tags(tag_id);
+                    CREATE INDEX IF NOT EXISTS idx_note_attachments_note_id ON note_attachments(note_id);
+                ";
+                cmd.ExecuteNonQuery();
 
                 CleanupStickyNotesMetadataInDb(conn);
 
@@ -376,23 +404,25 @@ namespace StickyNotes__
             catch { }
         }
 
-        public static int CreateNote(string title = "", string content = "", string? imagePath = null, string? ocrText = null, string color = "yellow")
+        public static int CreateNote(string title = "", string content = "", string? imagePath = null, string? ocrText = null, string color = "yellow", bool isSecure = false)
         {
             using (var conn = new SqliteConnection(GetConnectionString()))
             {
                 conn.Open();
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    INSERT INTO notes (title, content, plain_text, image_path, ocr_text, color)
-                    VALUES ($title, $content, $plain_text, $image_path, $ocr_text, $color);
+                    INSERT INTO notes (title, content, plain_text, image_path, ocr_text, color, is_secure)
+                    VALUES ($title, $content, $plain_text, $image_path, $ocr_text, $color, $is_secure);
                     SELECT last_insert_rowid();
                 ";
                 cmd.Parameters.AddWithValue("$title", title);
                 cmd.Parameters.AddWithValue("$content", content);
-                cmd.Parameters.AddWithValue("$plain_text", NoteContentHelper.ExtractPlainText(content));
+                // Secure note content is opaque ciphertext - never derive a searchable snippet from it.
+                cmd.Parameters.AddWithValue("$plain_text", isSecure ? "" : NoteContentHelper.ExtractPlainText(content));
                 cmd.Parameters.AddWithValue("$image_path", (object?)imagePath ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("$ocr_text", (object?)ocrText ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$ocr_text", isSecure ? DBNull.Value : (object?)ocrText ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$color", color);
+                cmd.Parameters.AddWithValue("$is_secure", isSecure ? 1 : 0);
 
                 return Convert.ToInt32(cmd.ExecuteScalar());
             }
@@ -421,14 +451,16 @@ namespace StickyNotes__
                         canvas_x = $canvas_x,
                         canvas_y = $canvas_y,
                         category = $category,
-                        is_template = $is_template
+                        is_template = $is_template,
+                        is_secure = $is_secure
                     WHERE id = $id;
                 ";
                 cmd.Parameters.AddWithValue("$title", note.Title);
                 cmd.Parameters.AddWithValue("$content", note.Content);
-                cmd.Parameters.AddWithValue("$plain_text", NoteContentHelper.ExtractPlainText(note.Content));
+                // Secure note content is opaque ciphertext - never derive a searchable snippet from it.
+                cmd.Parameters.AddWithValue("$plain_text", note.IsSecure ? "" : NoteContentHelper.ExtractPlainText(note.Content));
                 cmd.Parameters.AddWithValue("$image_path", (object?)note.ImagePath ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("$ocr_text", (object?)note.OcrText ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$ocr_text", note.IsSecure ? DBNull.Value : (object?)note.OcrText ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$color", note.Color);
                 cmd.Parameters.AddWithValue("$is_pinned", note.IsPinnedDesktop ? 1 : 0);
                 cmd.Parameters.AddWithValue("$is_popped", note.IsPoppedOut ? 1 : 0);
@@ -440,6 +472,7 @@ namespace StickyNotes__
                 cmd.Parameters.AddWithValue("$canvas_y", note.CanvasY);
                 cmd.Parameters.AddWithValue("$category", note.Category);
                 cmd.Parameters.AddWithValue("$is_template", note.IsTemplate ? 1 : 0);
+                cmd.Parameters.AddWithValue("$is_secure", note.IsSecure ? 1 : 0);
                 cmd.Parameters.AddWithValue("$id", note.Id);
 
                 cmd.ExecuteNonQuery();
@@ -1083,6 +1116,7 @@ namespace StickyNotes__
                 Id = reader.GetInt32(reader.GetOrdinal("id")),
                 Title = reader.IsDBNull(reader.GetOrdinal("title")) ? "" : reader.GetString(reader.GetOrdinal("title")),
                 Content = reader.IsDBNull(reader.GetOrdinal("content")) ? "" : reader.GetString(reader.GetOrdinal("content")),
+                PlainText = GetStringSafe(reader, "plain_text", ""),
                 ImagePath = reader.IsDBNull(reader.GetOrdinal("image_path")) ? null : reader.GetString(reader.GetOrdinal("image_path")),
                 OcrText = reader.IsDBNull(reader.GetOrdinal("ocr_text")) ? null : reader.GetString(reader.GetOrdinal("ocr_text")),
                 Color = reader.IsDBNull(reader.GetOrdinal("color")) ? "yellow" : reader.GetString(reader.GetOrdinal("color")),
@@ -1097,6 +1131,7 @@ namespace StickyNotes__
                 Category = GetStringSafe(reader, "category"),
                 IsFavorite = GetBoolSafe(reader, "is_favorite"),
                 IsTemplate = GetBoolSafe(reader, "is_template"),
+                IsSecure = GetBoolSafe(reader, "is_secure"),
                 CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
                 UpdatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("updated_at")))
             };

@@ -1,6 +1,7 @@
 <Window x:Class="StickyNotes__.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:StickyNotes__"
         Title="StickyNotes++" Height="800" Width="350"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize"
@@ -10,10 +11,11 @@
     
     <Window.Resources>
         <DataTemplate x:Key="NoteCardTemplate">
-            <Border x:Name="CardBorder" Margin="0,0,0,14" CornerRadius="8" BorderThickness="1" Cursor="Hand"
+            <Border x:Name="CardBorder" CornerRadius="8" BorderThickness="1" Cursor="Hand"
                     Background="{Binding CardBackground}"
                     PreviewMouseLeftButtonDown="NoteCard_PreviewMouseLeftButtonDown"
                     MouseMove="NoteCard_MouseMove"
+                    ContextMenuOpening="CardBorder_ContextMenuOpening"
                     RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform>
                     <ScaleTransform ScaleX="1.0" ScaleY="1.0"/>
@@ -24,7 +26,14 @@
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="BorderBrush" Value="{Binding CardHeaderBrush}"/>
+                        <Setter Property="Margin" Value="0,0,0,14"/>
                         <Style.Triggers>
+                            <DataTrigger Binding="{Binding CardSize}" Value="Small">
+                                <Setter Property="Margin" Value="0,0,0,8"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding CardSize}" Value="Large">
+                                <Setter Property="Margin" Value="0,0,0,18"/>
+                            </DataTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
@@ -60,7 +69,20 @@
                     </Style>
                 </Border.Style>
                 
-                <Grid Margin="12">
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Margin" Value="12"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CardSize}" Value="Small">
+                                    <Setter Property="Margin" Value="10,8,10,8"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding CardSize}" Value="Large">
+                                    <Setter Property="Margin" Value="14"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/> <!-- Row 0: Title & Hover -->
                         <RowDefinition Height="Auto"/> <!-- Row 1: Snippet -->
@@ -77,7 +99,21 @@
 
                     <!-- Note Title -->
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DisplayTitle}"
-                               Foreground="{Binding CardTextBrush}" FontSize="13" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                               Foreground="{Binding CardTextBrush}" FontWeight="Bold" TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="13"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CardSize}" Value="Small">
+                                        <Setter Property="FontSize" Value="12"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding CardSize}" Value="Large">
+                                        <Setter Property="FontSize" Value="14.5"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
 
                     <!-- Favorite/Pin toggle — always visible so favorited notes are easy to spot at a glance -->
                     <Button Grid.Row="0" Grid.Column="1" Click="FavoriteButton_Click" Tag="{Binding Id}" ToolTip="{Binding FavoriteToolTip}"
@@ -135,8 +171,23 @@
 
                     <!-- Text Snippet (single line, since the title already shows the note's first line) -->
                     <TextBlock Grid.Row="1" Grid.ColumnSpan="4" Text="{Binding Snippet}"
-                               Foreground="{Binding CardTextBrush}" FontSize="12" Margin="0,4,0,0"
-                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Opacity="0.8"/>
+                               Foreground="{Binding CardTextBrush}" Margin="0,4,0,0"
+                               Visibility="{Binding SnippetVisibility}"
+                               TextTrimming="CharacterEllipsis" Opacity="0.8">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="TextWrapping" Value="NoWrap"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CardSize}" Value="Large">
+                                        <Setter Property="FontSize" Value="12.5"/>
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                        <Setter Property="MaxHeight" Value="34"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
 
                     <Grid Grid.Row="2" Grid.ColumnSpan="4" Margin="0,8,0,0" Visibility="{Binding TaskProgressVisibility}">
                         <Grid.RowDefinitions>
@@ -158,7 +209,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                        <WrapPanel Grid.Column="0" VerticalAlignment="Center" Visibility="{Binding TagsRowVisibility}">
                             <ItemsControl ItemsSource="{Binding Tags}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -207,26 +258,152 @@
                 </Grid>
             </Border>
         </DataTemplate>
+
+        <!-- Group header row (category / favorites / notes) used by the virtualized notes list below.
+             A plain data row (not an Expander) so it can sit inline in a single flat, virtualizing ListBox
+             alongside note cards - collapsing a group simply omits its card rows from the bound list. -->
+        <DataTemplate x:Key="NoteGroupHeaderTemplate">
+            <Border Background="#12FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="10"
+                    Padding="10,9" Margin="0,4,0,10" Cursor="Hand"
+                    MouseLeftButtonUp="GroupHeader_Click"
+                    ContextMenu="{Binding HeaderContextMenu}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0">
+                        <TextBlock Text="{Binding ChevronGlyph}" Foreground="#99FFFFFF" FontSize="9"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <Ellipse Grid.Column="1" Width="8" Height="8" Fill="{Binding AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+
+                    <TextBlock Grid.Column="2" Text="{Binding Title}" Foreground="White" FontWeight="SemiBold" FontSize="12.5"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                    <Border Grid.Column="3" Background="{Binding PillBackground}" CornerRadius="8" Padding="7,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Count}" Foreground="{Binding AccentBrush}" FontSize="10.5" FontWeight="Bold"/>
+                    </Border>
+
+                    <Button Grid.Column="4" Content="➕" ToolTip="{Binding AddTooltip}" Visibility="{Binding AddButtonVisibility}"
+                            Click="GroupHeaderAdd_Click"
+                            Background="Transparent" BorderThickness="0" Foreground="{Binding AccentBrush}" FontSize="10"
+                            Cursor="Hand" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- Picks the group-header row template vs. the note-card template for the flat, virtualized notes list -->
+        <local:NotesRowTemplateSelector x:Key="NotesRowTemplateSelector"/>
+
+        <!-- Thin, theme-matching vertical scrollbar for the notes list (replaces the default OS scrollbar) -->
+        <Style x:Key="ThinVerticalScrollBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid SnapsToDevicePixels="true">
+                            <Track x:Name="PART_Track" IsDirectionReversed="true" IsEnabled="{TemplateBinding IsEnabled}">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#30ffffff" CornerRadius="3"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Bare-bones container so ListBoxItem contributes no selection/hover chrome of its own -->
+        <Style x:Key="NotesListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="MainWindowBorder" Background="#E6121212" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="12">
         <!-- Root Grid: content + status toast overlay -->
         <Grid>
-            <Grid Margin="15">
+
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- Row 0: Logo &amp; Action Icons -->
-                <RowDefinition Height="Auto"/> <!-- Row 1: Action Bar -->
-                <RowDefinition Height="Auto"/> <!-- Row 2: Tab Navigation -->
-                <RowDefinition Height="Auto"/> <!-- Row 3: Search Bar -->
-                <RowDefinition Height="Auto"/> <!-- Row 4: Tags Filter Bar -->
-                <RowDefinition Height="Auto"/> <!-- Row 5: Sort Options Row -->
-                <RowDefinition Height="Auto"/> <!-- Row 6: Stale Notes Digest Banner -->
-                <RowDefinition Height="*"/>    <!-- Row 7: Notes List / Clipboard ScrollViewer -->
+                <RowDefinition Height="Auto"/> <!-- Row 1: Add Section (Note Manager / New Note / Quick Actions) -->
+                <RowDefinition Height="Auto"/> <!-- Row 2: Filter Section (Search / Tags) -->
+                <RowDefinition Height="Auto"/> <!-- Row 3: Sort Section (Sort by / Card size) -->
+                <RowDefinition Height="Auto"/> <!-- Row 4: Stale Notes Digest Banner -->
+                <RowDefinition Height="*"/>    <!-- Row 5: Notes List / Clipboard ScrollViewer -->
             </Grid.RowDefinitions>
+
+            <!-- Section boundary style shared by the Add/Filter/Sort groups below -->
+            <Grid.Resources>
+                <Style x:Key="SidebarSectionBoundary" TargetType="Border">
+                    <Setter Property="Background" Value="#0Cffffff"/>
+                    <Setter Property="BorderBrush" Value="#16ffffff"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="CornerRadius" Value="10"/>
+                    <Setter Property="Padding" Value="10"/>
+                    <Setter Property="Margin" Value="0,0,0,10"/>
+                </Style>
+                <Style x:Key="SidebarSectionLabel" TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="#5Cffffff"/>
+                    <Setter Property="FontSize" Value="9.5"/>
+                    <Setter Property="FontWeight" Value="Bold"/>
+                    <Setter Property="Margin" Value="2,0,0,8"/>
+                </Style>
+                <!-- Thin, theme-matching horizontal scrollbar for the tags filter row (replaces the default OS scrollbar) -->
+                <Style x:Key="ThinHorizontalScrollBar" TargetType="ScrollBar">
+                    <Setter Property="Height" Value="4"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Grid SnapsToDevicePixels="true">
+                                    <Track x:Name="PART_Track" IsEnabled="{TemplateBinding IsEnabled}">
+                                        <Track.Thumb>
+                                            <Thumb>
+                                                <Thumb.Template>
+                                                    <ControlTemplate TargetType="Thumb">
+                                                        <Border Background="#33ffffff" CornerRadius="2"/>
+                                                    </ControlTemplate>
+                                                </Thumb.Template>
+                                            </Thumb>
+                                        </Track.Thumb>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Grid.Resources>
 
                 <!-- Title &amp; Settings Header (Row 0) -->
                 <Grid Grid.Row="0" Margin="0,0,0,15">
-                    <Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
@@ -238,7 +415,7 @@
                     </StackPanel>
 
                     <!-- Action Button Controls Stack -->
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <!-- Sync Button -->
                         <Button x:Name="SyncIconButton" Content="🔄" Click="SyncIconButton_Click" ToolTip="Sync with JeffsNotes"
                                 Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
@@ -256,21 +433,18 @@
 
                         <!-- Close Sidebar -->
                         <Button Content="✕" Click="CloseButton_Click" ToolTip="Exit"
-                                Width="26" Height="26" Background="Transparent" BorderThickness="0" 
+                                Width="26" Height="26" Background="Transparent" BorderThickness="0" Margin="0,0,4,0"
                                 Foreground="#ffffff" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
                     </StackPanel>
                 </Grid>
 
-                <!-- Prominent Action Bar (Row 1) -->
-                <Grid Grid.Row="1" Margin="0,0,0,12">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="8"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+                <!-- ================= ADD Section (Row 1): Note Manager / New Note / Quick Actions ================= -->
+                <Border Grid.Row="1" Style="{StaticResource SidebarSectionBoundary}">
+                <StackPanel>
+                    <TextBlock Text="ADD" Style="{StaticResource SidebarSectionLabel}"/>
 
                     <!-- Note Manager + Combined New Note & Template Dropdown Button -->
-                    <Grid Grid.Row="0">
+                    <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="6"/>
@@ -290,7 +464,7 @@
                                     <Setter Property="CornerRadius" Value="8"/>
                                 </Style>
                             </Button.Resources>
-                            <TextBlock Text="&lt;" FontSize="14" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <TextBlock Text="🗂" FontSize="14" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
 
                         <!-- Combined New Note & Template Dropdown Button -->
@@ -340,8 +514,8 @@
                         </Grid>
                     </Grid>
 
-                    <!-- Secondary Actions Row -->
-                    <Grid Grid.Row="2">
+                    <!-- Quick Actions Row -->
+                    <Grid Margin="0,10,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="6"/>
@@ -433,82 +607,152 @@
                             </StackPanel>
                         </Button>
                     </Grid>
-                </Grid>
+                </StackPanel>
+                </Border>
 
-                <!-- Search Panel Grid (Row 2) -->
-                <Grid x:Name="SearchPanel" Grid.Row="3" Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                <!-- ================= FILTER Section (Row 2): Search / Tags ================= -->
+                <Border Grid.Row="2" Style="{StaticResource SidebarSectionBoundary}">
+                <StackPanel>
+                    <TextBlock Text="FILTER" Style="{StaticResource SidebarSectionLabel}"/>
 
-                    <TextBox x:Name="SearchTextBox" Grid.Column="0" TextChanged="SearchTextBox_TextChanged" Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="0" CaretBrush="White">
-                        <TextBox.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="6"/>
-                            </Style>
-                        </TextBox.Resources>
-                    </TextBox>
-                    <TextBlock Grid.Column="0" IsHitTestVisible="False" Text="Search notes..." VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="12">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Text, ElementName=SearchTextBox}" Value="">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                    <!-- Search Panel -->
+                    <Grid x:Name="SearchPanel">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                    <!-- Advanced/Spotlight search (tag+category+time filters, snippets). Same feature as Win+Alt+Space. -->
-                    <Button Grid.Column="1" x:Name="SpotlightButton" Content="🔎" Click="SpotlightButton_Click" ToolTip="Advanced search (Win+Alt+Space)" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="13" BorderThickness="0" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="6"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
-                </Grid>
+                        <TextBox x:Name="SearchTextBox" Grid.Column="0" TextChanged="SearchTextBox_TextChanged" Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="0" CaretBrush="White">
+                            <TextBox.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6"/>
+                                </Style>
+                            </TextBox.Resources>
+                        </TextBox>
+                        <TextBlock Grid.Column="0" IsHitTestVisible="False" Text="Search notes..." VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=SearchTextBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
 
-                <!-- Tags Filter Bar (Row 3) -->
-                <ScrollViewer x:Name="TagsFilterScrollViewer" Grid.Row="4" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,15">
-                    <StackPanel x:Name="TagsFilterPanel" Orientation="Horizontal"/>
-                </ScrollViewer>
+                        <!-- Advanced/Spotlight search (tag+category+time filters, snippets). Same feature as Win+Alt+Space. -->
+                        <Button Grid.Column="1" x:Name="SpotlightButton" Content="🔎" Click="SpotlightButton_Click" ToolTip="Advanced search (Win+Alt+Space)" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="13" BorderThickness="0" Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </Grid>
 
-                <!-- Sort Options Row (Row 4 - Hidden when Clipboard active) -->
-                <Grid x:Name="SortPanel" Grid.Row="5" Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                    <!-- Tags Filter Bar -->
+                    <ScrollViewer x:Name="TagsFilterScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,10,0,0">
+                        <ScrollViewer.Resources>
+                            <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHorizontalScrollBar}"/>
+                        </ScrollViewer.Resources>
+                        <StackPanel x:Name="TagsFilterPanel" Orientation="Horizontal"/>
+                    </ScrollViewer>
+                </StackPanel>
+                </Border>
 
-                    <TextBlock Text="Sort by:" Foreground="#88ffffff" FontSize="10.5" VerticalAlignment="Center"/>
+                <!-- ================= SORT Section (Row 3): Sort by / Card size ================= -->
+                <Border Grid.Row="3" Style="{StaticResource SidebarSectionBoundary}">
+                <StackPanel>
+                    <TextBlock Text="SORT &amp; VIEW" Style="{StaticResource SidebarSectionLabel}"/>
 
-                    <!-- Sort by Category Button -->
-                    <Button Grid.Column="2" x:Name="SortCategoryButton" Content="Category" Click="SortCategoryButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="4"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
+                    <!-- Sort Options Row -->
+                    <Grid x:Name="SortPanel">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                    <!-- Sort by Date Button -->
-                    <Button Grid.Column="3" x:Name="SortDateButton" Content="Date (Newest)" Click="SortDateButton_Click" Margin="4,0,0,0" Padding="8,2" Background="#0084ff" Foreground="#ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="4"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
-                </Grid>
+                        <TextBlock Text="Sort by:" Foreground="#88ffffff" FontSize="10.5" VerticalAlignment="Center"/>
 
-                <!-- Stale Notes Digest Banner (Row 6) -->
-                <Border x:Name="StaleNotesBanner" Grid.Row="6" Margin="0,0,0,12" Padding="10,8" CornerRadius="8"
+                        <!-- Sort by Category Button -->
+                        <Button Grid.Column="2" x:Name="SortCategoryButton" Content="Category" Click="SortCategoryButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+
+                        <!-- Sort by Date Button -->
+                        <Button Grid.Column="3" x:Name="SortDateButton" Content="Date (Newest)" Click="SortDateButton_Click" Margin="4,0,0,0" Padding="8,2" Background="#0084ff" Foreground="#ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+
+                        <!-- Expand/collapse every category group at once - only relevant in Category sort mode -->
+                        <Button Grid.Column="4" x:Name="ExpandCollapseAllButton" Content="Collapse All" Click="ExpandCollapseAllButton_Click"
+                                Margin="4,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand"
+                                Visibility="Collapsed">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </Grid>
+
+                    <!-- Card Size Options Row -->
+                    <Grid x:Name="ViewSizePanel" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Card size:" Foreground="#88ffffff" FontSize="10.5" VerticalAlignment="Center"/>
+
+                        <!-- Small cards -->
+                        <Button Grid.Column="2" x:Name="SizeSmallButton" Content="S" Click="SizeSmallButton_Click" ToolTip="Compact cards" Margin="6,0,0,0" Padding="10,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+
+                        <!-- Medium cards (default) -->
+                        <Button Grid.Column="3" x:Name="SizeMediumButton" Content="M" Click="SizeMediumButton_Click" ToolTip="Medium cards (default)" Margin="4,0,0,0" Padding="10,2" Background="#0084ff" Foreground="#ffffff" FontSize="9.5" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+
+                        <!-- Large cards -->
+                        <Button Grid.Column="4" x:Name="SizeLargeButton" Content="L" Click="SizeLargeButton_Click" ToolTip="Expanded cards" Margin="4,0,0,0" Padding="10,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </Grid>
+                </StackPanel>
+                </Border>
+
+                <!-- Stale Notes Digest Banner (Row 4) -->
+                <Border x:Name="StaleNotesBanner" Grid.Row="4" Margin="0,0,0,12" Padding="10,8" CornerRadius="8"
                         Background="#1affa500" BorderBrush="#ffa500" BorderThickness="1" Visibility="Collapsed">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -524,24 +768,36 @@
                     </Grid>
                 </Border>
 
-                <!-- Notes List (Row 7) -->
-                <ScrollViewer x:Name="NotesScrollViewer" Grid.Row="7" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="NotesGroupPanel"/>
-                </ScrollViewer>
 
-            </Grid>
+                <!-- Notes List (Row 5) - flat, virtualized: only on-screen rows (group headers + note cards)
+                     are realized, regardless of how many notes exist. Collapsed groups simply aren't
+                     included in the bound ItemsSource, so no separate expand/collapse animation is needed. -->
+                <ListBox x:Name="NotesListBox" Grid.Row="5"
+                         Background="Transparent" BorderThickness="0" Padding="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.CanContentScroll="True"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         ItemContainerStyle="{StaticResource NotesListBoxItemStyle}"
+                         ItemTemplateSelector="{StaticResource NotesRowTemplateSelector}">
+                    <ListBox.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinVerticalScrollBar}"/>
+                    </ListBox.Resources>
+                </ListBox>
 
-            <!-- Status Toast Overlay (shown during OCR / AI processing) -->
-            <Border x:Name="StatusToast" Visibility="Collapsed"
-                    Background="#DD0a0a0a" BorderBrush="#0084ff" BorderThickness="1"
-                    CornerRadius="8" Padding="14,10" Margin="12"
-                    VerticalAlignment="Bottom" HorizontalAlignment="Stretch">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="StatusToastText" Text="Processing..." 
-                               Foreground="#ffffff" FontSize="12" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Border>
-        </Grid>
-    </Border>
+<Border x:Name="StatusToast" Visibility="Collapsed"
+        Background="#DD0a0a0a" BorderBrush="#0084ff" BorderThickness="1"
+        CornerRadius="8" Padding="14,10" Margin="12"
+        VerticalAlignment="Bottom" HorizontalAlignment="Stretch">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+        <TextBlock x:Name="StatusToastText" Text="Processing..."
+                   Foreground="#ffffff" FontSize="12" VerticalAlignment="Center"/>
+    </StackPanel>
+</Border>
+</Grid>
+</Border>
 </Window>
+

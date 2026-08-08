@@ -79,6 +79,20 @@ namespace StickyNotes__
             string xamlText = NoteContentHelper.SaveRange(range);
             string plainText = range.Text.Trim();
 
+            if (_note.IsSecure)
+            {
+                // Secure notes take a deliberately narrower save path: no hashtag auto-tagging, no
+                // wikilink/backlink parsing, and no version history - all of those would otherwise
+                // leak fragments (or full snapshots) of the decrypted content outside the vault.
+                if (!VaultService.IsUnlocked) return; // shouldn't happen (editor is locked), but never save plaintext if it did
+                _note.Title = title;
+                _note.Content = VaultService.Encrypt(xamlText);
+                DatabaseHelper.UpdateNote(_note);
+                NotifyNotesChanged();
+                UpdateWordCount();
+                return;
+            }
+
             _note.Title = title;
             _note.Content = xamlText;
 

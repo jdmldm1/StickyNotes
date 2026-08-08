@@ -412,6 +412,6 @@ namespace StickyNotes__
             menu.IsOpen = true;
         }
 
-        private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshNotesList();
+        private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e) => DebounceSearch();
     }
 }
