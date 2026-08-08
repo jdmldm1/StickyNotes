@@ -177,7 +177,20 @@ namespace StickyNotes__
                 }
                 catch
                 {
-                    MessageBox.Show("Couldn't decrypt this note - the content may be corrupted.", "Remove Security Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    var discard = MessageBox.Show(
+                        "Couldn't decrypt this note with the current vault password - its content was likely encrypted with a different password and can't be recovered.\n\n" +
+                        "Discard the unreadable content and unlock this note anyway? This cannot be undone.",
+                        "Remove Security Failed", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (discard != MessageBoxResult.Yes) return;
+
+                    _note.IsSecure = false;
+                    _note.Content = "";
+                    DatabaseHelper.UpdateNote(_note);
+
+                    LoadNoteData();
+                    main?.RefreshNotesList();
+                    main?.RefreshTagsFilter();
+                    main?.ShowStatusToast("Unrecoverable content discarded - note unlocked");
                     return;
                 }
 
