@@ -40,13 +40,13 @@ jobs:
 
       - name: Publish self-contained win-x64
         run: |
-          dotnet publish "StickyNotes++.csproj"
-          -c Release
-          -r win-x64
-          --self-contained true
-          -p:Version=${{ steps.version.outputs.version }}
-          -p:PublishSingleFile=false
-          -o publish
+          dotnet publish "StickyNotes++.csproj" `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:PublishSingleFile=false `
+            -o publish
 
       - name: Upload executables artifact
         uses: actions/upload-artifact@v4
@@ -85,5 +85,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: StickyNotes++ ${{ github.ref_name }}
-          files: dist/*.msi publish/*
+          files: |
+            dist/*.msi
+            publish/*
           generate_release_notes: true
