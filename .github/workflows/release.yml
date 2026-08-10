@@ -39,7 +39,7 @@ jobs:
         run: dotnet restore "StickyNotes++.csproj"
 
       - name: Publish self-contained win-x64
-        run: >
+        run: |
           dotnet publish "StickyNotes++.csproj"
           -c Release
           -r win-x64
@@ -47,11 +47,13 @@ jobs:
           -p:Version=${{ steps.version.outputs.version }}
           -p:PublishSingleFile=false
           -o publish
-- name: Upload executables artifact
-  uses: actions/upload-artifact@v4
-  with:
-    name: StickyNotesPlusPlus-${{ steps.version.outputs.version }}-exe
-    path: publish/*
+
+      - name: Upload executables artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StickyNotesPlusPlus-${{ steps.version.outputs.version }}-exe
+          path: publish/*
+
       - name: Install WiX toolset
         run: |
           dotnet tool install --global wix
@@ -83,5 +85,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: StickyNotes++ ${{ github.ref_name }}
-          files: dist/*.msi, publish/*
+          files: dist/*.msi publish/*
           generate_release_notes: true
