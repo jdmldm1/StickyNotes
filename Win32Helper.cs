@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -106,7 +106,7 @@ namespace StickyNotes__
         public const int HotkeyQuickCapture = 9007;
         public const int HotkeyGraph        = 9008;
         public const int HotkeyToggleSidebar = 9009;
-        
+
         public static void EnableMica(IntPtr hwnd, bool darkMode)
         {
             try

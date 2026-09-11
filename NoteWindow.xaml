@@ -32,68 +32,85 @@
     </Window.Resources>
 
     <Border x:Name="WindowBorder" CornerRadius="8" BorderThickness="1">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="35"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="30"/>
-            </Grid.RowDefinitions>
-
-            <!-- Custom Header -->
-            <Border Grid.Row="0" BorderBrush="#55FFFFFF" BorderThickness="0,0,0,2">
-            <Grid x:Name="HeaderGrid" MouseLeftButtonDown="Header_MouseLeftButtonDown">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/> <!-- Toggle Preview -->
-                    <ColumnDefinition Width="Auto"/> <!-- Toggle AI Chat -->
-                    <ColumnDefinition Width="Auto"/> <!-- Time Machine -->
-                    <ColumnDefinition Width="Auto"/> <!-- Backlinks -->
-                    <ColumnDefinition Width="Auto"/> <!-- Options -->
-                    <ColumnDefinition Width="Auto"/> <!-- Close -->
-                </Grid.ColumnDefinitions>
-
-                <!-- New Note -->
-                <Button Grid.Column="0" Content="+" Click="NewButton_Click" ToolTip="New Note (Win+Alt+N)"
-                        Width="30" Height="30" Margin="5,0,0,0" Background="Transparent" BorderThickness="0"
-                        Foreground="#e0e0e0" FontSize="18" FontWeight="Bold" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
-
-                <!-- Title / Drag bar -->
-                <TextBlock Grid.Column="1" x:Name="TitleTextBlock" Text="Sticky Note"
-                            Foreground="#e0e0e0" FontSize="11" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
-
-                <!-- Toggle Preview -->
-                <Button Grid.Column="2" x:Name="PreviewToggleButton" Content="👁" Click="PreviewToggleButton_Click" ToolTip="Toggle Markdown Preview"
-                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
-                        Foreground="#e0e0e0" FontSize="12.5" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
-
-                <!-- Toggle AI Chat -->
-                <Button Grid.Column="3" x:Name="AiChatToggleButton" Content="💬" Click="AiChatToggleButton_Click" ToolTip="AI Chat Assistant"
-                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
-                        Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Visibility="Collapsed"/>
-
-                <!-- Time Machine -->
-                <Button Grid.Column="4" x:Name="TimeMachineButton" Content="🕒" Click="TimeMachineButton_Click" ToolTip="Time Machine (Version History)"
-                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
-                        Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
-
-                <!-- Backlinks -->
-                <Button Grid.Column="5" x:Name="BacklinksToggleButton" Content="🔗" Click="BacklinksToggleButton_Click" ToolTip="Linked Notes"
-                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
-                        Foreground="#e0e0e0" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Visibility="Collapsed"/>
-
-                <!-- Options -->
-                <Button Grid.Column="6" Content="..." Click="OptionsButton_Click" ToolTip="Options"
-                        Width="30" Height="30" Background="Transparent" BorderThickness="0"
-                        Foreground="#e0e0e0" FontSize="14" FontWeight="Bold" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
-
-                <!-- Close -->
-                <Button Grid.Column="7" Content="✕" Click="CloseButton_Click" ToolTip="Close"
-                        Width="30" Height="30" Margin="0,0,5,0" Background="Transparent" BorderThickness="0"
-                        Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
-            </Grid>
+        <DockPanel LastChildFill="True">
+            <!-- Top CUI / Classification Banner -->
+            <Border x:Name="CuiTopBanner" DockPanel.Dock="Top" Background="#5C2D91" Height="22" Visibility="Collapsed" Cursor="Hand" ToolTip="Classification Banner (Click to change or toggle)" MouseLeftButtonUp="CuiBanner_Click">
+                <TextBlock x:Name="CuiTopBannerText" Text="CUI // FEDCON" Foreground="#FFFFFF" FontWeight="Bold" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI Variable Text, Segoe UI, sans-serif"/>
             </Border>
+
+            <!-- Bottom CUI / Classification Banner -->
+            <Border x:Name="CuiBottomBanner" DockPanel.Dock="Bottom" Background="#5C2D91" Height="22" Visibility="Collapsed" Cursor="Hand" ToolTip="Classification Banner (Click to change or toggle)" MouseLeftButtonUp="CuiBanner_Click">
+                <TextBlock x:Name="CuiBottomBannerText" Text="CUI // FEDCON" Foreground="#FFFFFF" FontWeight="Bold" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI Variable Text, Segoe UI, sans-serif"/>
+            </Border>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="35"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="30"/>
+                </Grid.RowDefinitions>
+
+                <!-- Custom Header -->
+                <Border Grid.Row="0" BorderBrush="#55FFFFFF" BorderThickness="0,0,0,2">
+                <Grid x:Name="HeaderGrid" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/> <!-- Toggle Preview -->
+                        <ColumnDefinition Width="Auto"/> <!-- Toggle AI Chat -->
+                        <ColumnDefinition Width="Auto"/> <!-- Time Machine -->
+                        <ColumnDefinition Width="Auto"/> <!-- Backlinks -->
+                        <ColumnDefinition Width="Auto"/> <!-- In-Meeting HUD -->
+                        <ColumnDefinition Width="Auto"/> <!-- Options -->
+                        <ColumnDefinition Width="Auto"/> <!-- Close -->
+                    </Grid.ColumnDefinitions>
+
+                    <!-- New Note -->
+                    <Button Grid.Column="0" Content="+" Click="NewButton_Click" ToolTip="New Note (Win+Alt+N)"
+                            Width="30" Height="30" Margin="5,0,0,0" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="18" FontWeight="Bold" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                    <!-- Title / Drag bar -->
+                    <TextBlock Grid.Column="1" x:Name="TitleTextBlock" Text="Sticky Note"
+                                Foreground="#e0e0e0" FontSize="11" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+
+                    <!-- Toggle Preview -->
+                    <Button Grid.Column="2" x:Name="PreviewToggleButton" Content="👁" Click="PreviewToggleButton_Click" ToolTip="Toggle Markdown Preview"
+                            Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="12.5" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                    <!-- Toggle AI Chat -->
+                    <Button Grid.Column="3" x:Name="AiChatToggleButton" Content="💬" Click="AiChatToggleButton_Click" ToolTip="AI Chat Assistant"
+                            Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Visibility="Collapsed"/>
+
+                    <!-- Time Machine -->
+                    <Button Grid.Column="4" x:Name="TimeMachineButton" Content="🕒" Click="TimeMachineButton_Click" ToolTip="Time Machine (Version History)"
+                            Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                    <!-- Backlinks -->
+                    <Button Grid.Column="5" x:Name="BacklinksToggleButton" Content="🔗" Click="BacklinksToggleButton_Click" ToolTip="Linked Notes"
+                            Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Visibility="Collapsed"/>
+
+                    <!-- In-Meeting HUD -->
+                    <Button Grid.Column="6" x:Name="MeetingHudButton" Content="🛰️" Click="MeetingHudButton_Click" ToolTip="In-Meeting HUD &amp; BLUF Formatter"
+                            Width="28" Height="30" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                    <!-- Options -->
+                    <Button Grid.Column="7" Content="..." Click="OptionsButton_Click" ToolTip="Options"
+                            Width="30" Height="30" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="14" FontWeight="Bold" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                    <!-- Close -->
+                    <Button Grid.Column="8" Content="✕" Click="CloseButton_Click" ToolTip="Close"
+                            Width="30" Height="30" Margin="0,0,5,0" Background="Transparent" BorderThickness="0"
+                            Foreground="#e0e0e0" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                </Grid>
+                </Border>
 
             <!-- Formatting Toolbar (Row 1) -->
             <Border Grid.Row="1" Background="#1a1a1a" BorderBrush="#2a2a2a" BorderThickness="0,0,0,1" Padding="5,3">
@@ -184,18 +201,57 @@
                     <Button Width="28" Height="24" Click="FormatClear_Click" ToolTip="Clear Formatting" Background="Transparent" BorderThickness="0" Foreground="#aaaaaa" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
                         <TextBlock Text="&#x2715;A" FontSize="10" FontFamily="Segoe UI"/>
                     </Button>
+
+                    <!-- Separator -->
+                    <Border Width="1" Height="16" Background="#333333" Margin="3,0" VerticalAlignment="Center"/>
+
+                    <!-- Audio Dictation & Voice Memos -->
+                    <Button x:Name="AudioToolbarToggleBtn" Width="28" Height="24" Click="ToggleAudioBar_Click" ToolTip="Voice Dictation &amp; Audio Memos (100% Offline)" Background="Transparent" BorderThickness="0" Foreground="#ffaa44" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
+                        <TextBlock Text="🎙️" FontSize="11"/>
+                    </Button>
                 </WrapPanel>
             </Border>
 
             <!-- Note Workspace & AI Chat Grid (Grid.Row="2") -->
             <Grid Grid.Row="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/> <!-- Row 0: AudioBar -->
+                    <RowDefinition Height="*"/>    <!-- Row 1: Note Editor & Overlays -->
+                    <RowDefinition Height="Auto"/> <!-- Row 2: AI Chat / Backlinks -->
                 </Grid.RowDefinitions>
 
-                <!-- Note Editor Area (Row 0) -->
-                <ScrollViewer x:Name="EditorScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                <!-- Offline Audio Dictation & Voice Memo Bar (Row 0 - Collapsed by default) -->
+                <Border x:Name="AudioBar" Grid.Row="0" Visibility="Collapsed" Background="#221811" BorderBrush="#e67e22" BorderThickness="0,0,0,1" Padding="8,4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Live Dictation Toggle -->
+                        <Button Grid.Column="0" x:Name="DictateToggleBtn" Click="DictateToggle_Click" Content="🎤 Live Dictate"
+                                Padding="8,2" Margin="0,0,6,0" Background="#3a2512" Foreground="#ffaa44" BorderBrush="#e67e22" BorderThickness="1" FontSize="10" FontWeight="SemiBold" Cursor="Hand">
+                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                        </Button>
+
+                        <!-- Voice Memo Record -->
+                        <Button Grid.Column="1" x:Name="VoiceMemoRecordBtn" Click="VoiceMemoRecord_Click" Content="⏺ Record Memo (.wav)"
+                                Padding="8,2" Margin="0,0,6,0" Background="#3d1414" Foreground="#ff6b6b" BorderBrush="#ff4444" BorderThickness="1" FontSize="10" FontWeight="SemiBold" Cursor="Hand">
+                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                        </Button>
+
+                        <!-- Status text -->
+                        <TextBlock Grid.Column="2" x:Name="AudioStatusText" Text="100% Offline Speech Engine Ready" Foreground="#bbbbbb" FontSize="9.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                        <!-- Close button -->
+                        <Button Grid.Column="3" Content="✕" Click="CloseAudioBar_Click" Background="Transparent" BorderThickness="0" Foreground="#888888" FontSize="11" Cursor="Hand" ToolTip="Hide Voice Bar"/>
+                    </Grid>
+                </Border>
+
+                <!-- Note Editor Area (Row 1) -->
+                <ScrollViewer x:Name="EditorScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               AllowDrop="True" DragEnter="Editor_DragEnter" DragLeave="Editor_DragLeave" DragOver="Editor_DragOver" Drop="Editor_Drop">
                     <StackPanel>
                         <!-- Image -->
@@ -245,13 +301,13 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Markdown Preview Area (Row 0 - overlays Editor) -->
-                <FlowDocumentScrollViewer x:Name="MarkdownPreviewViewer" Grid.Row="0" Visibility="Collapsed"
+                <!-- Markdown Preview Area (Row 1 - overlays Editor) -->
+                <FlowDocumentScrollViewer x:Name="MarkdownPreviewViewer" Grid.Row="1" Visibility="Collapsed"
                                           VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                           Background="Transparent"/>
 
-                <!-- Locked Secure Note Overlay (Row 0 - fully opaque, hides the editor/ciphertext underneath) -->
-                <Border x:Name="LockedOverlay" Grid.Row="0" Background="#F2141414" Visibility="Collapsed">
+                <!-- Locked Secure Note Overlay (Row 1 - fully opaque, hides the editor/ciphertext underneath) -->
+                <Border x:Name="LockedOverlay" Grid.Row="1" Background="#F2141414" Visibility="Collapsed">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="220">
                         <TextBlock Text="🔒" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,10"/>
                         <TextBlock Text="This note is secure" Foreground="#e0e0e0" FontSize="13" FontWeight="SemiBold"
@@ -270,11 +326,11 @@
                 </Border>
 
                 <!-- Word count / reading time footer (overlays bottom-right of the editor) -->
-                <TextBlock x:Name="WordCountText" Grid.Row="0" Text="0 words" Foreground="#66ffffff" FontSize="9.5"
+                <TextBlock x:Name="WordCountText" Grid.Row="1" Text="0 words" Foreground="#66ffffff" FontSize="9.5"
                            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,6" IsHitTestVisible="False"/>
 
-                <!-- AI Chat Panel (Row 1 - Collapsed by default) -->
-                <Border x:Name="AiChatPanel" Grid.Row="1" Height="160" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed">
+                <!-- AI Chat Panel (Row 2 - Collapsed by default) -->
+                <Border x:Name="AiChatPanel" Grid.Row="2" Height="160" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
@@ -304,33 +360,115 @@
                     </Grid>
                 </Border>
 
-                <!-- Time Machine Panel (Row 1 - Collapsed by default) -->
-                <Border x:Name="TimeMachinePanel" Grid.Row="1" Height="160" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed" Padding="10">
+                <!-- Time Machine Panel (Full Workspace Overlay) -->
+                <Border x:Name="TimeMachinePanel" Grid.Row="1" Grid.RowSpan="2" Background="#18181b" Visibility="Collapsed">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="36"/>
                             <RowDefinition Height="*"/>
+                            <RowDefinition Height="22"/>
                         </Grid.RowDefinitions>
-                        
+
                         <!-- Header -->
-                        <Grid Grid.Row="0" Margin="0,0,0,5">
+                        <Border Grid.Row="0" Background="#202024" BorderBrush="#2e2e34" BorderThickness="0,0,0,1" Padding="8,4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🕒" FontSize="12" Margin="2,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Time Machine" Foreground="#ffffff" FontSize="11.5" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <Border Background="#2a2a30" CornerRadius="8" Padding="5,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="TimeMachineVersionCountText" Text="0 versions" Foreground="#a1a1aa" FontSize="9.5"/>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Actions -->
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="TimeMachineViewToggleBtn" Content="Full Text" Click="TimeMachineViewToggle_Click" ToolTip="Toggle between line diff and full historical text"
+                                            Padding="6,2" Margin="0,0,4,0" Background="#27272a" Foreground="#d4d4d8" BorderBrush="#3f3f46" BorderThickness="1" FontSize="9.5" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                    </Button>
+                                    <Button x:Name="TimeMachineCopyBtn" Content="📋 Copy" Click="TimeMachineCopy_Click" ToolTip="Copy historical text to clipboard"
+                                            Padding="6,2" Margin="0,0,4,0" Background="#27272a" Foreground="#d4d4d8" BorderBrush="#3f3f46" BorderThickness="1" FontSize="9.5" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                    </Button>
+                                    <Button x:Name="TimeMachineRestoreBtn" Content="⏪ Restore" Click="TimeMachineRestore_Click" ToolTip="Restore this version (current note will be backed up)"
+                                            Padding="8,2" Margin="0,0,6,0" Background="#0084ff" Foreground="#ffffff" FontWeight="SemiBold" BorderThickness="0" FontSize="9.5" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                    </Button>
+                                    <Button Content="✕" Click="CloseTimeMachine_Click" Background="Transparent" BorderThickness="0" Foreground="#a0a0a0" FontSize="11" Cursor="Hand" ToolTip="Close Time Machine"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Main Split: Revisions List & Diff View -->
+                        <Grid Grid.Row="1">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" MinWidth="90" MaxWidth="160"/>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Version History" Foreground="#ffffff" FontSize="11.5" FontWeight="Bold" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Content="✕" Click="CloseTimeMachine_Click" Background="Transparent" BorderThickness="0" Foreground="#a0a0a0" FontSize="11" Cursor="Hand"/>
+
+                            <!-- Revisions Timeline (Column 0) -->
+                            <Border Grid.Column="0" Background="#141416" BorderBrush="#27272a" BorderThickness="0,0,1,0">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel x:Name="HistoryVersionsPanel" Margin="4,4,4,4"/>
+                                </ScrollViewer>
+                            </Border>
+
+                            <!-- Diff & Content Viewer (Column 1) -->
+                            <Grid Grid.Column="1">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Details Strip -->
+                                <Border Grid.Row="0" Background="#1b1b1f" BorderBrush="#27272a" BorderThickness="0,0,0,1" Padding="6,3">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock x:Name="DiffRevisionTimeText" Text="Selected Version" Foreground="#e4e4e7" FontSize="9.5" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="DiffWordDeltaText" Text="" Foreground="#7ee787" FontSize="9" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" x:Name="DiffStatsText" Text="" Foreground="#a1a1aa" FontSize="9" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Diff Viewer -->
+                                <ScrollViewer x:Name="DiffScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="#111113" Padding="2">
+                                    <StackPanel x:Name="DiffLinesPanel"/>
+                                </ScrollViewer>
+
+                                <!-- Full Text Viewer -->
+                                <ScrollViewer x:Name="FullContentScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="#111113" Visibility="Collapsed" Padding="6">
+                                    <TextBox x:Name="FullContentTextBox" IsReadOnly="True" Background="Transparent" Foreground="#d4d4d8" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas, Segoe UI Variable Text" FontSize="11" CaretBrush="White"/>
+                                </ScrollViewer>
+
+                                <!-- Empty State -->
+                                <StackPanel x:Name="TimeMachineEmptyState" Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed" Margin="14">
+                                    <TextBlock Text="⏳" FontSize="24" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                    <TextBlock Text="No history yet" Foreground="#ffffff" FontSize="11.5" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Edits will be saved automatically as you type." Foreground="#71717a" FontSize="10" TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Grid>
                         </Grid>
 
-                        <!-- Versions List -->
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                            <StackPanel x:Name="HistoryVersionsPanel"/>
-                        </ScrollViewer>
+                        <!-- Footer -->
+                        <Border Grid.Row="2" Background="#141416" BorderBrush="#27272a" BorderThickness="0,1,0,0" Padding="6,2">
+                            <TextBlock Text="🟢 Added in current  🔴 Removed from revision  · Current note backed up on restore" Foreground="#666670" FontSize="8.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
                     </Grid>
                 </Border>
 
                 <!-- Backlinks Panel (Connected Notes) -->
-                <Border x:Name="BacklinksPanel" Grid.Row="1" Height="120" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed">
+                <Border x:Name="BacklinksPanel" Grid.Row="2" Height="120" Background="#161616" BorderBrush="#2d2d2d" BorderThickness="0,1,0,0" Visibility="Collapsed">
                     <Grid Margin="10,8,10,8">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -379,6 +517,44 @@
                 <Button Grid.Column="5" Content="+ Tag" Click="AddTagButton_Click"
                         Padding="5,1" Background="#20ffffff" Foreground="#ffffff" FontSize="9" BorderThickness="0" Cursor="Hand"/>
             </Grid>
+
+            <!-- Wikilink Autocomplete Popup -->
+            <Popup x:Name="WikilinkPopup" AllowsTransparency="True" StaysOpen="False" PlacementTarget="{Binding ElementName=NoteRichTextBox}" Placement="Relative">
+                <Border Background="#1f1f23" BorderBrush="#0084ff" BorderThickness="1.5" CornerRadius="6" Width="260" MaxHeight="200">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="12" ShadowDepth="3" Color="Black" Opacity="0.6"/>
+                    </Border.Effect>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="#27272a" CornerRadius="5,5,0,0" Padding="8,4">
+                            <TextBlock Text="🔗 Link to Note  (Enter to select, Esc to dismiss)" Foreground="#a1a1aa" FontSize="9.5" FontWeight="SemiBold"/>
+                        </Border>
+                        <ListBox x:Name="WikilinkListBox" Grid.Row="1" Background="Transparent" BorderThickness="0" MaxHeight="160"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 MouseDoubleClick="WikilinkListBox_MouseDoubleClick"
+                                 KeyDown="WikilinkListBox_KeyDown">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="2,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="📝" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Title}" Foreground="#f4f4f5" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Category}" Foreground="#71717a" FontSize="9.5" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </Popup>
 
             <Popup x:Name="FormatToolbarPopup" AllowsTransparency="True" Placement="RelativePoint" StaysOpen="True" VerticalOffset="-35" HorizontalOffset="0">
                 <Border Background="#CC1A1A1A" BorderBrush="#22FFFFFF" BorderThickness="1" CornerRadius="6" Padding="3">
@@ -430,5 +606,6 @@
                 </Border>
             </Popup>
         </Grid>
+        </DockPanel>
     </Border>
 </Window>

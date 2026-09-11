@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -18,7 +18,6 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Threading.Tasks;
 
-
 namespace StickyNotes__
 {
     public partial class MainWindow : Window
@@ -37,6 +36,7 @@ namespace StickyNotes__
             InitializeNotifyIcon();
             StartClipboardMonitor();
             ApplyJeffsNotesSyncSettings();
+            InitializePeekListeners();
         }
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
@@ -44,6 +44,11 @@ namespace StickyNotes__
             RefreshTagsFilter();
             LoadSavedOpacity();
             CheckStaleNotes();
+
+            if (SettingsService.Current.StartCollapsed)
+            {
+                CollapseSidebar(animate: false);
+            }
         }
     }
 }

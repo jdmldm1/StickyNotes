@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -33,7 +33,7 @@ namespace StickyNotes__
             WindowBorder.Background = profile.DarkBg;
             WindowBorder.BorderBrush = profile.DarkHeader;
             HeaderGrid.Background = profile.DarkHeader;
-            
+
             TitleTextBlock.Foreground = profile.DarkText;
             NoteTitleTextBox.Foreground = profile.DarkText;
             NoteTitleTextBox.CaretBrush = profile.DarkText;
@@ -67,6 +67,113 @@ namespace StickyNotes__
         {
             this.Close();
         }
+        private void MeetingHudButton_Click(object sender, RoutedEventArgs e)
+        {
+            var main = Application.Current.MainWindow as MainWindow;
+            main?.OpenMeetingHudWindow(_noteId);
+        }
+
+        public void ApplyClassification()
+        {
+            string? mark = _note.Classification;
+            if (string.IsNullOrWhiteSpace(mark))
+            {
+                CuiTopBanner.Visibility = Visibility.Collapsed;
+                CuiBottomBanner.Visibility = Visibility.Collapsed;
+                WindowBorder.BorderThickness = new Thickness(1);
+                ApplyColor();
+                return;
+            }
+
+            mark = mark.Trim();
+            CuiTopBannerText.Text = mark;
+            CuiBottomBannerText.Text = mark;
+            CuiTopBanner.Visibility = Visibility.Visible;
+            CuiBottomBanner.Visibility = Visibility.Visible;
+
+            SolidColorBrush bannerBrush;
+            SolidColorBrush borderBrush;
+
+            if (mark.IndexOf("UNCLASSIFIED", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                mark.IndexOf("FOUO", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                bannerBrush = new SolidColorBrush(Color.FromRgb(0x00, 0x7A, 0x33));
+                borderBrush = new SolidColorBrush(Color.FromRgb(0x00, 0xA8, 0x44));
+            }
+            else
+            {
+                bannerBrush = new SolidColorBrush(Color.FromRgb(0x5C, 0x2D, 0x91));
+                borderBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x42, 0xD4));
+            }
+
+            CuiTopBanner.Background = bannerBrush;
+            CuiBottomBanner.Background = bannerBrush;
+            WindowBorder.BorderBrush = borderBrush;
+            WindowBorder.BorderThickness = new Thickness(2);
+        }
+
+        public void SetClassification(string? classification)
+        {
+            _note.Classification = string.IsNullOrWhiteSpace(classification) ? null : classification.Trim();
+            DatabaseHelper.UpdateNote(_note);
+            ApplyClassification();
+            NotifyNotesChanged();
+        }
+
+        private void CuiBanner_Click(object sender, MouseButtonEventArgs e)
+        {
+            ShowClassificationMenu(sender as UIElement);
+        }
+
+        private void ShowClassificationMenu(UIElement? target)
+        {
+            var menu = new ContextMenu();
+            menu.Style = (Style)FindResource(typeof(ContextMenu));
+
+            var noneItem = new MenuItem { Header = "None (Hide Banners)", IsChecked = string.IsNullOrEmpty(_note.Classification) };
+            noneItem.Click += (s, args) => SetClassification(null);
+            menu.Items.Add(noneItem);
+            menu.Items.Add(new Separator());
+
+            string[] cuiPresets = new[]
+            {
+                "CONTROLLED // CUI // FEDCON",
+                "CUI // FEDCON",
+                "CUI // SP-CTI",
+                "CUI // PRIVACY",
+                "CONTROLLED // CUI",
+                "UNCLASSIFIED",
+                "UNCLASSIFIED // FOUO"
+            };
+
+            foreach (var preset in cuiPresets)
+            {
+                var item = new MenuItem
+                {
+                    Header = preset,
+                    IsCheckable = true,
+                    IsChecked = string.Equals(_note.Classification, preset, StringComparison.OrdinalIgnoreCase)
+                };
+                string p = preset;
+                item.Click += (s, args) => SetClassification(p);
+                menu.Items.Add(item);
+            }
+
+            menu.Items.Add(new Separator());
+            var customItem = new MenuItem { Header = "Custom Marking..." };
+            customItem.Click += (s, args) =>
+            {
+                var dlg = new InputDialog("Enter classification / CUI marking:", "Classification Marking", _note.Classification ?? "CUI // FEDCON") { Owner = this };
+                if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.Answer))
+                {
+                    SetClassification(dlg.Answer.Trim());
+                }
+            };
+            menu.Items.Add(customItem);
+
+            if (target != null) menu.PlacementTarget = target;
+            menu.IsOpen = true;
+        }
         private void OptionsButton_Click(object sender, RoutedEventArgs e)
         {
             var menu = new ContextMenu();
@@ -84,12 +191,7 @@ namespace StickyNotes__
 
             var categoryItem = new MenuItem { Header = "Move to Category" };
             string currentCat = _note.Category ?? "General";
-            var allNotes = DatabaseHelper.ListNotes(null, null);
-            var existingCats = allNotes
-                .Select(n => n.Category ?? "General")
-                .Distinct()
-                .OrderBy(c => c)
-                .ToList();
+            var existingCats = DatabaseHelper.ListAllCategories();
             foreach (var cat in existingCats)
             {
                 var subItem = new MenuItem { Header = cat, IsCheckable = true, IsChecked = cat == currentCat };
@@ -131,7 +233,7 @@ namespace StickyNotes__
             {
                 SaveNoteContent();
                 DatabaseHelper.SetNoteIsTemplate(_noteId, true);
-                
+
                 var main = Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
                 if (main != null)
                 {
@@ -146,6 +248,11 @@ namespace StickyNotes__
             menu.Items.Add(secureItem);
             menu.Items.Add(new Separator());
 
+            var cuiItem = new MenuItem { Header = "🛡️  Defense Classification Banner..." };
+            cuiItem.Click += (s, args) => ShowClassificationMenu(this);
+            menu.Items.Add(cuiItem);
+            menu.Items.Add(new Separator());
+
             var deleteItem = new MenuItem { Header = "Delete Note" };
             deleteItem.Click += (s, args) => DeleteNote();
             menu.Items.Add(deleteItem);
@@ -158,7 +265,6 @@ namespace StickyNotes__
 
             if (_note.IsSecure)
             {
-                // Removing security: decrypt back to plain content permanently.
                 if (!VaultService.IsUnlocked)
                 {
                     var unlockDialog = new PasswordDialog("Enter your vault password to remove security from this note.", "Unlock Vault") { Owner = this };
@@ -205,8 +311,6 @@ namespace StickyNotes__
             }
             else
             {
-                // Making secure: ensure a vault password exists and is unlocked, then encrypt the
-                // note's current content and strip any plain_text/ocr_text (handled by UpdateNote).
                 if (!VaultService.IsConfigured)
                 {
                     var setupDialog = new PasswordDialog(
@@ -226,7 +330,7 @@ namespace StickyNotes__
                     }
                 }
 
-                SaveNoteContent(); // flush any pending edits into _note.Content first (still plaintext at this point)
+                SaveNoteContent();
                 string plainXaml = _note.Content;
 
                 _note.IsSecure = true;

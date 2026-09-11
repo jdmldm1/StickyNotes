@@ -1,11 +1,38 @@
 <Window x:Class="StickyNotes__.SpotlightWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Spotlight Search" Height="360" Width="550"
+        Title="Spotlight Search" Height="400" Width="580"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="False" Topmost="True"
         Loaded="Window_Loaded" Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown">
     
+    <Window.Resources>
+        <Style x:Key="OmnibarChipStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1AFFFFFF"/>
+            <Setter Property="Foreground" Value="#a0a0a0"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#33FFFFFF"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
     <Border Background="#E6121212" BorderBrush="#33FFFFFF" BorderThickness="1.5" CornerRadius="12">
         <Border.Effect>
             <DropShadowEffect BlurRadius="25" ShadowDepth="0" Color="Black" Opacity="0.6"/>
@@ -14,11 +41,12 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <!-- Search Header Row -->
-            <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid Grid.Row="0" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -35,7 +63,7 @@
                             </Style>
                         </TextBox.Resources>
                     </TextBox>
-                    <TextBlock IsHitTestVisible="False" Text="Search notes or type / for commands... (Esc to close)" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="13">
+                    <TextBlock IsHitTestVisible="False" Text="Search notes, calc (e.g. = 45*12), or type / for commands..." VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="12.5">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -50,15 +78,33 @@
                 </Grid>
             </Grid>
 
+            <!-- Omnibar Action Chips Row -->
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="30,0,0,8">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="= Calc" Click="OmnibarChip_Click" Tag="=" Style="{StaticResource OmnibarChipStyle}" ToolTip="Calculate math expressions (e.g. = 45 * 12)"/>
+                    <Button Content="/todo" Click="OmnibarChip_Click" Tag="/todo " Style="{StaticResource OmnibarChipStyle}" ToolTip="Add a quick task to notes"/>
+                    <Button Content="/new" Click="OmnibarChip_Click" Tag="/new " Style="{StaticResource OmnibarChipStyle}" ToolTip="Create a new note"/>
+                    <Button Content="/graph" Click="OmnibarChip_Click" Tag="/graph" Style="{StaticResource OmnibarChipStyle}" ToolTip="Open Knowledge Graph view"/>
+                    <Button Content="/template" Click="OmnibarChip_Click" Tag="/template" Style="{StaticResource OmnibarChipStyle}" ToolTip="Choose note template"/>
+                    <Button Content="/manager" Click="OmnibarChip_Click" Tag="/manager" Style="{StaticResource OmnibarChipStyle}" ToolTip="Open Note Manager"/>
+                    <Button Content="/teams" Click="OmnibarChip_Click" Tag="/teams" Style="{StaticResource OmnibarChipStyle}" ToolTip="Import Teams meetings, transcripts &amp; attendees"/>
+                    <Button Content="/kanban" Click="OmnibarChip_Click" Tag="/kanban" Style="{StaticResource OmnibarChipStyle}" ToolTip="Open Visual Kanban Board"/>
+                    <Button Content="/hud" Click="OmnibarChip_Click" Tag="/hud" Style="{StaticResource OmnibarChipStyle}" ToolTip="Open Floating Meeting HUD"/>
+                    <Button Content="/scratchpad" Click="OmnibarChip_Click" Tag="/scratchpad" Style="{StaticResource OmnibarChipStyle}" ToolTip="Open Ghost Scratchpad"/>
+                    <Button Content="/snip" Click="OmnibarChip_Click" Tag="/snip" Style="{StaticResource OmnibarChipStyle}" ToolTip="Screenshot snip to note"/>
+                    <Button Content="/clipboard" Click="OmnibarChip_Click" Tag="/clipboard" Style="{StaticResource OmnibarChipStyle}" ToolTip="Open Clipboard history"/>
+                </StackPanel>
+            </ScrollViewer>
+
             <!-- Filter Row -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
                 <ComboBox x:Name="TagFilterCombo" Width="120" Margin="0,0,6,0" SelectionChanged="Filter_SelectionChanged"/>
                 <ComboBox x:Name="CategoryFilterCombo" Width="120" Margin="0,0,6,0" SelectionChanged="Filter_SelectionChanged"/>
                 <ComboBox x:Name="TimeFilterCombo" Width="120" SelectionChanged="Filter_SelectionChanged"/>
             </StackPanel>
 
             <!-- Search Results List -->
-            <ListBox Grid.Row="2" x:Name="ResultsListBox" Background="Transparent" BorderThickness="0"
+            <ListBox Grid.Row="3" x:Name="ResultsListBox" Background="Transparent" BorderThickness="0"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"
                      MouseDoubleClick="ResultsListBox_MouseDoubleClick">
                 <ListBox.ItemContainerStyle>

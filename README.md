@@ -4,7 +4,7 @@ Desktop sticky notes using **C# .NET WPF** and **SQLite**.
 
 ## Key Features
 
-- **Sidebar & Appbar**: Snaps to the right edge of the screen.
+- **Sidebar & Collapsed Edge Handle**: Snaps to the right edge of the screen with optional workspace reservation (AppBar). Seamlessly collapses into a sleek, draggable edge handle on the right side with smooth slide animations, instantly freeing full screen space for other apps.
 - **Note Cards**: note cards with customizable categories, and dynamic tag badges.
 - **Notes**: Drag notes out of the sidebar to create floating widgets that can pin to the desktop wallpaper.
 - **Rich Editor & Checklists**: Markdown preview, interactive checklists, single-spaced editing, and Ctrl+V clipboard paste-to-attach.

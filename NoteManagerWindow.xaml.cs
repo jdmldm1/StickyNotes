@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,7 +22,7 @@ namespace StickyNotes__
         private Note? _currentNote;
         private bool _isLoadingNote;
         private readonly DispatcherTimer _saveTimer;
-        // Tracks whether categories panel is collapsed
+
         private bool _categoriesCollapsed = false;
         private string _lastHistoryContent = "";
         private string _lastHistoryPlain = "";
@@ -95,8 +95,7 @@ namespace StickyNotes__
         {
             CategoryTabsPanel.Children.Clear();
 
-            var allNotes = DatabaseHelper.ListNotes(null, null);
-            var categories = allNotes.Select(n => n.Category ?? "General").Distinct().OrderBy(c => c == "General" ? "zzz" : c).ToList();
+            var categories = DatabaseHelper.ListAllCategories().OrderBy(c => c == "General" ? "zzz" : c).ToList();
 
             CategoryTabsPanel.Children.Add(BuildTab("All Notes", "#0084ff", null));
             CategoryTabsPanel.Children.Add(BuildTab("★ Favorites", "#ffc107", "__favorites__"));
@@ -116,8 +115,7 @@ namespace StickyNotes__
 
             string categoryName = dialog.Answer.Trim();
 
-            var allNotes = DatabaseHelper.ListNotes(null, null);
-            bool categoryExists = allNotes.Any(n => string.Equals(n.Category ?? "General", categoryName, StringComparison.OrdinalIgnoreCase));
+            bool categoryExists = DatabaseHelper.ListAllCategories().Any(c => string.Equals(c, categoryName, StringComparison.OrdinalIgnoreCase));
 
             if (!categoryExists)
             {
@@ -189,7 +187,6 @@ namespace StickyNotes__
 
         private void SelectCategory(string? categoryKey)
         {
-            // When a category is selected, keep the panel expanded for navigation
             _categoriesCollapsed = false;
             UpdateCategoryPanelVisibility();
             _selectedCategory = categoryKey;
@@ -197,8 +194,6 @@ namespace StickyNotes__
             RefreshNotesList();
         }
 
-
-        // Coalesces rapid keystrokes so search doesn't run a full DB query + list rebuild per character.
         private void ManagerSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_searchDebounceTimer == null)
@@ -216,7 +211,6 @@ namespace StickyNotes__
 
         private void RefreshNotesList()
         {
-            // Ensure category panel visibility matches current collapsed state
             UpdateCategoryPanelVisibility();
 
             string searchQuery = ManagerSearchBox.Text.Trim();
@@ -239,7 +233,6 @@ namespace StickyNotes__
             NotesListPanel.ItemsSource = notes.Select(BuildNoteListItemViewModel).ToList();
         }
 
-        // Updates visibility of category panel and rotates collapse icon
         private void UpdateCategoryPanelVisibility()
         {
             if (CategoryScrollViewer != null)
@@ -248,7 +241,6 @@ namespace StickyNotes__
                 CategoryCollapseRotate.Angle = _categoriesCollapsed ? 90 : 0;
         }
 
-        // Handler for collapse/expand toggle button
         private void CategoryCollapseButton_Click(object sender, RoutedEventArgs e)
         {
             _categoriesCollapsed = !_categoriesCollapsed;
@@ -296,7 +288,6 @@ namespace StickyNotes__
 
         private void LoadNoteIntoEditor(int noteId)
         {
-            // Auto-collapse category panel when opening a note for focused editing
             _categoriesCollapsed = true;
             UpdateCategoryPanelVisibility();
             if (_currentNote != null && _currentNote.Id != noteId)
@@ -312,8 +303,6 @@ namespace StickyNotes__
 
             if (note.IsSecure)
             {
-                // Secure notes aren't editable inline here - the unlock UI only lives in NoteWindow,
-                // so keep this pane simple and just point at "Open" instead of duplicating it.
                 EditorHeaderGrid.Visibility = Visibility.Visible;
                 EditorToolbar.Visibility = Visibility.Collapsed;
                 EditorImageBorder.Visibility = Visibility.Collapsed;
@@ -415,8 +404,7 @@ namespace StickyNotes__
         {
             if (_currentNote == null) return;
 
-            var allNotes = DatabaseHelper.ListNotes(null, null);
-            var categories = allNotes.Select(n => n.Category ?? "General").Distinct().ToList();
+            var categories = DatabaseHelper.ListAllCategories();
             if (!categories.Contains(_currentNote.Category ?? "General")) categories.Add(_currentNote.Category ?? "General");
             if (!categories.Contains("General")) categories.Add("General");
 
@@ -598,7 +586,14 @@ namespace StickyNotes__
 
         private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
         {
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); } catch { }
+            try
+            {
+                if (SecurityHelper.IsSafeWebUri(e.Uri))
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+                }
+            }
+            catch { }
             e.Handled = true;
         }
 
@@ -1135,7 +1130,6 @@ namespace StickyNotes__
         }
     }
 
-    // A row in the virtualized notes list (NoteManagerWindow.xaml's NotesListPanel).
     public class NoteListItemViewModel
     {
         public int Id { get; set; }

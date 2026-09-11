@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -44,11 +44,21 @@ namespace StickyNotes__
             _notifyIcon.DoubleClick += (s, e) => RestoreFromTray();
 
             var contextMenu = new System.Windows.Forms.ContextMenuStrip();
-            
+
             var openItem = new System.Windows.Forms.ToolStripMenuItem("Open StickyNotes++");
             openItem.Click += (s, e) => RestoreFromTray();
             contextMenu.Items.Add(openItem);
-            
+
+            var collapseItem = new System.Windows.Forms.ToolStripMenuItem("Collapse to Edge Handle");
+            collapseItem.Click += (s, e) =>
+            {
+                if (this.Visibility == Visibility.Visible)
+                    CollapseSidebar(animate: true);
+                else
+                    ShowEdgeHandle();
+            };
+            contextMenu.Items.Add(collapseItem);
+
             var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit");
             exitItem.Click += (s, e) => ExitApplication();
             contextMenu.Items.Add(exitItem);
@@ -57,22 +67,14 @@ namespace StickyNotes__
         }
         private void RestoreFromTray()
         {
-            int screenWidth = (int)SystemParameters.PrimaryScreenWidth;
-            int screenHeight = (int)SystemParameters.PrimaryScreenHeight;
-            this.Left = screenWidth - 350;
-            this.Top = 0;
-            this.Width = 350;
-            this.Height = screenHeight;
-
-            RegisterAppBar();
-            this.Show();
-            this.WindowState = WindowState.Normal;
-            this.Activate();
+            ExpandSidebar(animate: true);
         }
-        private void ExitApplication()
+        public void ExitApplication()
         {
             _notifyIcon?.Dispose();
             _notifyIcon = null;
+
+            try { _edgeHandleWnd?.Close(); } catch {}
 
             var openWindows = new List<NoteWindow>(_openNoteWindows.Values);
             foreach (var noteWnd in openWindows)
@@ -89,8 +91,7 @@ namespace StickyNotes__
         {
             if (this.WindowState == WindowState.Minimized)
             {
-                UnregisterAppBar();
-                this.Hide();
+                MinimizeToTray();
                 this.WindowState = WindowState.Normal;
             }
             base.OnStateChanged(e);
@@ -102,8 +103,7 @@ namespace StickyNotes__
         }
         private void MinimizeButton_Click(object sender, RoutedEventArgs e)
         {
-            UnregisterAppBar();
-            this.Hide();
+            MinimizeToTray();
         }
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
@@ -161,6 +161,7 @@ namespace StickyNotes__
 
             try
             {
+                _edgeHandleWnd?.Close();
                 _spotlightWnd?.Close();
                 _quickCaptureWnd?.Close();
             }

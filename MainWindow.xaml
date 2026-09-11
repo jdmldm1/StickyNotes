@@ -7,7 +7,9 @@
         ResizeMode="NoResize"
         SourceInitialized="Window_SourceInitialized"
         Closing="Window_Closing"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        KeyDown="Window_KeyDown"
+        Deactivated="Window_Deactivated">
     
     <Window.Resources>
         <DataTemplate x:Key="NoteCardTemplate">
@@ -426,6 +428,11 @@
                                 Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
                                 Foreground="#ffffff" FontSize="13" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
 
+                        <!-- Collapse to Edge Handle -->
+                        <Button x:Name="CollapseButton" Content="⇥" Click="CollapseButton_Click" ToolTip="Collapse to Edge Handle (Win+Alt+Z or Esc)"
+                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="13" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
                         <!-- Minimize Sidebar -->
                         <Button Content="—" Click="MinimizeButton_Click" ToolTip="Minimize to Tray"
                                 Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
@@ -780,6 +787,9 @@
                          VirtualizingPanel.IsVirtualizing="True"
                          VirtualizingPanel.VirtualizationMode="Recycling"
                          VirtualizingPanel.ScrollUnit="Pixel"
+                         VirtualizingPanel.CacheLength="2,2"
+                         VirtualizingPanel.CacheLengthUnit="Page"
+                         VirtualizingPanel.IsContainerVirtualizable="True"
                          ItemContainerStyle="{StaticResource NotesListBoxItemStyle}"
                          ItemTemplateSelector="{StaticResource NotesRowTemplateSelector}">
                     <ListBox.Resources>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
@@ -193,7 +193,7 @@ namespace StickyNotes__
                 var justPulled = new HashSet<int>(result.AffectedLocalNoteIds);
                 var syncMapByLocal = DatabaseHelper.GetAllSyncMapByLocalId();
 
-                foreach (var note in DatabaseHelper.ListNotes())
+                foreach (var note in DatabaseHelper.ListNotes(includeContent: true))
                 {
                     if (justPulled.Contains(note.Id)) continue;
 
@@ -213,10 +213,10 @@ namespace StickyNotes__
                                 byte[] bytes = File.ReadAllBytes(note.ImagePath);
                                 string base64 = Convert.ToBase64String(bytes);
                                 string dataUri = $"data:image/png;base64,{base64}";
-                                var uploadRes = await PostJsonAsync<UploadResponse>(http, $"{baseUrl}/api/upload", new 
-                                { 
-                                    image = dataUri, 
-                                    name = Path.GetFileName(note.ImagePath) 
+                                var uploadRes = await PostJsonAsync<UploadResponse>(http, $"{baseUrl}/api/upload", new
+                                {
+                                    image = dataUri,
+                                    name = Path.GetFileName(note.ImagePath)
                                 });
                                 if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Url))
                                 {

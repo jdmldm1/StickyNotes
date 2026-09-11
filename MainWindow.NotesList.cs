@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -26,8 +26,9 @@ namespace StickyNotes__
         private string _sortOrder = "date";
         private string _cardSize = "Medium";
         private DispatcherTimer? _searchDebounceTimer;
+        private DispatcherTimer? _refreshDebounceTimer;
+        private bool _isNotesListDirty;
 
-        // Coalesces rapid keystrokes so search doesn't run a full DB query + list rebuild per character.
         private void DebounceSearch()
         {
             if (_searchDebounceTimer == null)
@@ -42,11 +43,40 @@ namespace StickyNotes__
             _searchDebounceTimer.Stop();
             _searchDebounceTimer.Start();
         }
+
+        public void QueueRefreshNotesList()
+        {
+            if (this.Visibility != Visibility.Visible)
+            {
+                _isNotesListDirty = true;
+                return;
+            }
+
+            if (_refreshDebounceTimer == null)
+            {
+                _refreshDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                _refreshDebounceTimer.Tick += (s, e) =>
+                {
+                    _refreshDebounceTimer!.Stop();
+                    RefreshNotesList();
+                };
+            }
+            _refreshDebounceTimer.Stop();
+            _refreshDebounceTimer.Start();
+        }
+
+        private static readonly Brush FavoriteGroupBrush = NoteCardViewModel.FrozenBrush(255, 0xff, 0xc1, 0x07);
+        private static readonly Brush NotesGroupBrush = NoteCardViewModel.FrozenBrush(255, 0x00, 0x84, 0xff);
         private static readonly string[] CategoryColors = { "#D49A13", "#1A8F54", "#C2185B", "#7B1FA2", "#0288D1", "#e65100" };
+        private static readonly Dictionary<string, Brush> _categoryBrushCache = new Dictionary<string, Brush>(StringComparer.OrdinalIgnoreCase);
+
         private static Brush GetCategoryColorBrush(string categoryName)
         {
             if (string.IsNullOrEmpty(categoryName) || categoryName == "General")
                 return Brushes.White;
+
+            if (_categoryBrushCache.TryGetValue(categoryName, out var cached))
+                return cached;
 
             string? customHex = DatabaseHelper.GetCategoryColor(categoryName);
             var converter = new System.Windows.Media.BrushConverter();
@@ -54,7 +84,10 @@ namespace StickyNotes__
             {
                 try
                 {
-                    return (Brush)converter.ConvertFromString(customHex)!;
+                    var b = (Brush)converter.ConvertFromString(customHex)!;
+                    b.Freeze();
+                    _categoryBrushCache[categoryName] = b;
+                    return b;
                 }
                 catch {}
             }
@@ -64,8 +97,12 @@ namespace StickyNotes__
                 hash = hash * 31 + c;
 
             int idx = Math.Abs(hash) % CategoryColors.Length;
-            return (Brush)converter.ConvertFromString(CategoryColors[idx])!;
+            var fallback = (Brush)converter.ConvertFromString(CategoryColors[idx])!;
+            fallback.Freeze();
+            _categoryBrushCache[categoryName] = fallback;
+            return fallback;
         }
+
         public ContextMenu CreateCategoryContextMenu(string categoryName, Action onChanged)
         {
             var menu = new ContextMenu();
@@ -86,7 +123,7 @@ namespace StickyNotes__
             foreach (var (name, hex) in colors)
             {
                 var item = new MenuItem { Header = name };
-                
+
                 item.Icon = new System.Windows.Shapes.Ellipse
                 {
                     Width = 10,
@@ -99,6 +136,7 @@ namespace StickyNotes__
                 item.Click += (s, e) =>
                 {
                     DatabaseHelper.SetCategoryColor(categoryName, hex);
+                    _categoryBrushCache.Remove(categoryName);
                     onChanged();
                 };
                 menu.Items.Add(item);
@@ -120,6 +158,7 @@ namespace StickyNotes__
             resetItem.Click += (s, e) =>
             {
                 DatabaseHelper.ResetCategoryColor(categoryName);
+                _categoryBrushCache.Remove(categoryName);
                 onChanged();
             };
             menu.Items.Add(resetItem);
@@ -130,6 +169,13 @@ namespace StickyNotes__
         public void RefreshNotesList()
         {
             if (NotesListBox == null) return;
+
+            if (this.Visibility != Visibility.Visible)
+            {
+                _isNotesListDirty = true;
+                return;
+            }
+            _isNotesListDirty = false;
 
             string searchQuery = SearchTextBox.Text.Trim();
             var notes = DatabaseHelper.ListNotes(
@@ -152,7 +198,7 @@ namespace StickyNotes__
                 string fullText = n.PlainText;
                 List<string> tags = tagsMap.TryGetValue(n.Id, out var t) ? t : new List<string>();
                 List<NoteAttachment> attachments = attachmentsMap.TryGetValue(n.Id, out var a) ? a : new List<NoteAttachment>();
-                return new NoteCardViewModel
+                var vm = new NoteCardViewModel
                 {
                     Id = n.Id,
                     Title = n.Title,
@@ -169,13 +215,13 @@ namespace StickyNotes__
                     Attachments = n.IsSecure ? new List<NoteAttachment>() : attachments,
                     HasLikelyLink = !n.IsSecure && (fullText.Contains("http://", StringComparison.OrdinalIgnoreCase) || fullText.Contains("https://", StringComparison.OrdinalIgnoreCase))
                 };
+                vm.InitComputedProperties();
+                return vm;
             }).ToList();
 
-            var favoriteBrush = new SolidColorBrush(Color.FromRgb(0xff, 0xc1, 0x07));
-            var notesBrush = new SolidColorBrush(Color.FromRgb(0x00, 0x84, 0xff));
+            var favoriteBrush = FavoriteGroupBrush;
+            var notesBrush = NotesGroupBrush;
 
-            // Flat row list: group headers + (only-if-expanded) note cards. Feeding a single virtualizing
-            // ListBox this way means only on-screen rows are ever realized, no matter how many notes exist.
             var rows = new List<object>();
 
             if (_sortOrder == "category")
@@ -299,8 +345,6 @@ namespace StickyNotes__
         {
             if (sender is not FrameworkElement element || element.DataContext is not NoteCardViewModel vm) return;
 
-            // Hyperlink extraction needs the note's full rich-text content, which we deliberately don't
-            // load for every card on every refresh - fetch it fresh here, once, only on click.
             var note = DatabaseHelper.GetNote(vm.Id);
             if (note == null) return;
             var items = BuildQuickOpenItems(note, vm.Attachments);
@@ -325,10 +369,25 @@ namespace StickyNotes__
         }
         private static void OpenQuickOpenItem(QuickOpenItem item)
         {
-            if (item.IsFile && !File.Exists(item.Target))
+            if (item.IsFile)
             {
-                MessageBox.Show("This file no longer exists on disk.", "File Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                if (!File.Exists(item.Target))
+                {
+                    MessageBox.Show("This file no longer exists on disk.", "File Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (!SecurityHelper.ConfirmDangerousFileExecution(item.Target))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                if (!SecurityHelper.IsSafeWebUri(item.Target))
+                {
+                    MessageBox.Show("The link destination is not a supported web address.", "Invalid Link", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
             }
             try
             {
@@ -607,14 +666,10 @@ namespace StickyNotes__
         }
         private List<string> GetCategoryGroupKeys()
         {
-            var categories = DatabaseHelper.ListNotes(null, null)
-                .Select(n => n.Category ?? "General")
-                .Distinct()
-                .ToList();
+            var categories = DatabaseHelper.ListAllCategories();
             return new List<string> { "__favorites__" }.Concat(categories).ToList();
         }
-        // Label reflects what the NEXT click will do, so it stays correct even after the user
-        // manually expands/collapses a couple of groups by hand.
+
         private void UpdateExpandCollapseAllButtonLabel()
         {
             bool anyCollapsed = GetCategoryGroupKeys().Any(key => _expanderStates.TryGetValue(key, out var expanded) && !expanded);
@@ -659,7 +714,7 @@ namespace StickyNotes__
             if (sender is Button btn && btn.Tag is int noteId)
             {
                 var menu = new ContextMenu();
-                
+
                 var colors = new[] { ("Yellow", "yellow"), ("Green", "green"), ("Pink", "pink"), ("Purple", "purple"), ("Blue", "blue"), ("Charcoal", "charcoal") };
                 foreach (var (name, key) in colors)
                 {
@@ -673,9 +728,7 @@ namespace StickyNotes__
                 menu.IsOpen = true;
             }
         }
-        // Right-click anywhere on a note card (that isn't a more specific element, like a tag chip,
-        // with its own context menu) shows this. Reuses the same handlers as the toolbar icons
-        // (color palette, delete) so there's one source of truth for each action.
+
         private void CardBorder_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
             if (sender is not Border border || border.DataContext is not NoteCardViewModel noteVm) return;
@@ -701,8 +754,6 @@ namespace StickyNotes__
 
             menu.Items.Add(new Separator());
 
-            // Flat list rather than a submenu: the app's global MenuItem style doesn't implement
-            // a submenu popup, so a nested "Change Color" menu would never be able to open.
             var colors = new[] { ("Yellow", "yellow"), ("Green", "green"), ("Pink", "pink"), ("Purple", "purple"), ("Blue", "blue"), ("Charcoal", "charcoal") };
             foreach (var (name, key) in colors)
             {
@@ -759,7 +810,7 @@ namespace StickyNotes__
                 {
                     note.Color = colorKey;
                     DatabaseHelper.UpdateNote(note);
-                    
+
                     if (_openNoteWindows.TryGetValue(noteId, out var openWnd))
                     {
                         openWnd.ChangeColor(colorKey);
@@ -780,11 +831,7 @@ namespace StickyNotes__
 
             var menu = new ContextMenu();
 
-            var existingCategories = DatabaseHelper.ListNotes(null, null)
-                .Select(n => n.Category ?? "General")
-                .Distinct()
-                .OrderBy(c => c)
-                .ToList();
+            var existingCategories = DatabaseHelper.ListAllCategories();
 
             foreach (var cat in existingCategories)
             {
@@ -847,7 +894,6 @@ namespace StickyNotes__
         public bool IsFile { get; set; }
     }
 
-    // A row in the flat, virtualized notes list representing a collapsible group (Favorites/category/Notes).
     public class NoteGroupHeaderViewModel
     {
         public string Title { get; set; } = "";
@@ -863,7 +909,6 @@ namespace StickyNotes__
         public string ChevronGlyph => IsExpanded ? "▾" : "▸";
     }
 
-    // Picks the group-header row template vs. the note-card template for the flat notes ListBox.
     public class NotesRowTemplateSelector : DataTemplateSelector
     {
         public override DataTemplate? SelectTemplate(object item, DependencyObject container)
@@ -889,35 +934,30 @@ namespace StickyNotes__
         public DateTime UpdatedAt { get; set; }
         public string CardSize { get; set; } = "Medium";
 
-
-        // Preloaded once per refresh via DatabaseHelper.GetAllNoteAttachmentsMap() to avoid an N+1
-        // DB query per card (previously ImageVisibility/ThumbnailSource each queried per note).
         public List<NoteAttachment> Attachments { get; set; } = new List<NoteAttachment>();
-        // Cheap substring check computed once in RefreshNotesList from the already-loaded plain text,
-        // used only to decide whether to show the quick-open button - the real hyperlink extraction
-        // (which requires a full rich-text parse) only runs when the button is actually clicked.
         public bool HasLikelyLink { get; set; }
 
         public Visibility SnippetVisibility => CardSize == "Small" ? Visibility.Collapsed : Visibility.Visible;
         public Visibility TagsRowVisibility => CardSize == "Small" ? Visibility.Collapsed : Visibility.Visible;
 
-        public string DateText
-        {
-            get
-            {
-                var span = DateTime.Now - UpdatedAt;
-                if (span.TotalMinutes < 1) return "Just now";
-                if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
-                if (span.TotalHours < 24 && UpdatedAt.Date == DateTime.Now.Date) return $"{(int)span.TotalHours}h ago";
-                if (UpdatedAt.Date == DateTime.Now.Date.AddDays(-1)) return "Yesterday";
-                if (UpdatedAt.Year == DateTime.Now.Year) return UpdatedAt.ToString("MMM d");
-                return UpdatedAt.ToString("MMM d, yyyy");
-            }
-        }
+        public string DisplayTitle { get; private set; } = "";
+        public string DateText { get; private set; } = "";
+        public string TagsList { get; private set; } = "";
+        public Visibility QuickOpenVisibility { get; private set; } = Visibility.Collapsed;
+        public string QuickOpenIcon { get; private set; } = "";
+        public string QuickOpenToolTip { get; private set; } = "";
+        public string? ResolvedImagePath { get; private set; }
+        public Visibility ImageVisibility => (CardSize != "Small" && !string.IsNullOrEmpty(ResolvedImagePath)) ? Visibility.Visible : Visibility.Collapsed;
 
-        private static readonly Brush FavoriteOnBrush = FrozenBrush(0xff, 0xff, 0xc1, 0x07);
-        private static readonly Brush FavoriteOffBrush = FrozenBrush(0x80, 0xff, 0xff, 0xff);
-        private static Brush FrozenBrush(byte a, byte r, byte g, byte b)
+        public int TotalTasks { get; private set; }
+        public int CompletedTasks { get; private set; }
+        public double TaskProgressPercentage { get; private set; }
+        public string TaskStatsText { get; private set; } = "";
+        public Visibility TaskProgressVisibility => (CardSize != "Small" && TotalTasks > 0) ? Visibility.Visible : Visibility.Collapsed;
+
+        internal static readonly Brush FavoriteOnBrush = FrozenBrush(0xff, 0xff, 0xc1, 0x07);
+        internal static readonly Brush FavoriteOffBrush = FrozenBrush(0x80, 0xff, 0xff, 0xff);
+        public static Brush FrozenBrush(byte a, byte r, byte g, byte b)
         {
             var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(a, r, g, b));
             brush.Freeze();
@@ -928,98 +968,109 @@ namespace StickyNotes__
         public Brush FavoriteBrush => IsFavorite ? FavoriteOnBrush : FavoriteOffBrush;
         public string FavoriteToolTip => IsFavorite ? "Unpin favorite" : "Mark as favorite";
 
-        public string DisplayTitle => (IsSecure ? "🔒 " : "") + (string.IsNullOrEmpty(Title) ? "Sticky Note" : Title);
-
-        public Visibility QuickOpenVisibility => (Attachments.Count > 0 || HasLikelyLink) ? Visibility.Visible : Visibility.Collapsed;
-
-        public string QuickOpenIcon => (Attachments.Count > 0 ? "📎" : "🔗") + "️";
-
-        public string QuickOpenToolTip
+        public void InitComputedProperties()
         {
-            get
-            {
-                if (Attachments.Count == 1 && !HasLikelyLink) return $"Open {Attachments[0].FileName}";
-                if (Attachments.Count > 1 && !HasLikelyLink) return $"Open ({Attachments.Count} files)";
-                if (Attachments.Count == 0 && HasLikelyLink) return "Open link";
-                return "Open attached files/links";
-            }
-        }
+            DisplayTitle = (IsSecure ? "🔒 " : "") + (string.IsNullOrEmpty(Title) ? "Sticky Note" : Title);
+            DateText = FormatDate(UpdatedAt);
+            TagsList = Tags.Count > 0 ? string.Join("  ", Tags.Select(t => $"#{t}")) : "";
 
-        public string TagsList => Tags.Count > 0 ? string.Join("  ", Tags.Select(t => $"#{t}")) : "";
+            bool hasAttachments = Attachments.Count > 0;
+            QuickOpenVisibility = (hasAttachments || HasLikelyLink) ? Visibility.Visible : Visibility.Collapsed;
+            QuickOpenIcon = (hasAttachments ? "📎" : "🔗") + "️";
+            if (Attachments.Count == 1 && !HasLikelyLink) QuickOpenToolTip = $"Open {Attachments[0].FileName}";
+            else if (Attachments.Count > 1 && !HasLikelyLink) QuickOpenToolTip = $"Open ({Attachments.Count} files)";
+            else if (Attachments.Count == 0 && HasLikelyLink) QuickOpenToolTip = "Open link";
+            else QuickOpenToolTip = "Open attached files/links";
 
-        public Visibility ImageVisibility
-        {
-            get
+            if (!IsSecure)
             {
-                if (CardSize == "Small") return Visibility.Collapsed;
                 if (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath))
                 {
-                    return Visibility.Visible;
+                    ResolvedImagePath = ImagePath;
                 }
-                foreach (var att in Attachments)
+                else if (hasAttachments)
                 {
-                    if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
+                    foreach (var att in Attachments)
                     {
-                        return Visibility.Visible;
+                        if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
+                        {
+                            ResolvedImagePath = att.FilePath;
+                            break;
+                        }
                     }
                 }
-                return Visibility.Collapsed;
             }
+
+            ParseTaskCounts(FullPlainText, out int total, out int completed);
+            TotalTasks = total;
+            CompletedTasks = completed;
+            TaskProgressPercentage = total > 0 ? ((double)completed / total) * 100 : 0;
+            TaskStatsText = $"{completed} of {total} tasks";
         }
 
-        private bool IsImageFile(string path)
+        private static string FormatDate(DateTime updatedAt)
         {
-            string ext = System.IO.Path.GetExtension(path).ToLower();
-            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".bmp";
+            var now = DateTime.Now;
+            var span = now - updatedAt;
+            if (span.TotalMinutes < 1) return "Just now";
+            if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+            if (span.TotalHours < 24 && updatedAt.Date == now.Date) return $"{(int)span.TotalHours}h ago";
+            if (updatedAt.Date == now.Date.AddDays(-1)) return "Yesterday";
+            if (updatedAt.Year == now.Year) return updatedAt.ToString("MMM d");
+            return updatedAt.ToString("MMM d, yyyy");
         }
 
-        public int TotalTasks => CountOccurrences(FullPlainText, "- [ ]") + CountOccurrences(FullPlainText, "- [x]") + CountOccurrences(FullPlainText, "* [ ]") + CountOccurrences(FullPlainText, "* [x]");
-        public int CompletedTasks => CountOccurrences(FullPlainText, "- [x]") + CountOccurrences(FullPlainText, "* [x]");
-
-        public double TaskProgressPercentage => TotalTasks > 0 ? ((double)CompletedTasks / TotalTasks) * 100 : 0;
-        public string TaskStatsText => $"{CompletedTasks} of {TotalTasks} tasks";
-        public Visibility TaskProgressVisibility => (CardSize != "Small" && TotalTasks > 0) ? Visibility.Visible : Visibility.Collapsed;
-
-        private int CountOccurrences(string text, string pattern)
+        private static void ParseTaskCounts(string text, out int total, out int completed)
         {
-            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(pattern)) return 0;
-            int count = 0;
-            int index = 0;
-            while ((index = text.IndexOf(pattern, index, StringComparison.OrdinalIgnoreCase)) != -1)
+            total = 0;
+            completed = 0;
+            if (string.IsNullOrEmpty(text)) return;
+
+            int len = text.Length;
+            for (int i = 0; i <= len - 5; i++)
             {
-                count++;
-                index += pattern.Length;
+                char c0 = text[i];
+                if (c0 == '-' || c0 == '*')
+                {
+                    if (text[i + 1] == ' ' && text[i + 2] == '[' && (i + 4 < len) && text[i + 4] == ']')
+                    {
+                        char mark = text[i + 3];
+                        if (mark == ' ')
+                        {
+                            total++;
+                            i += 4;
+                        }
+                        else if (mark == 'x' || mark == 'X')
+                        {
+                            total++;
+                            completed++;
+                            i += 4;
+                        }
+                    }
+                }
             }
-            return count;
         }
 
-        // Decoded thumbnails are cached across refreshes (keyed by path + last-write time so an edited/replaced
-        // file at the same path still invalidates) so re-decoding from disk doesn't happen on every list refresh.
+        private static bool IsImageFile(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string ext = System.IO.Path.GetExtension(path);
+            return ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+                   ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                   ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                   ext.Equals(".gif", StringComparison.OrdinalIgnoreCase) ||
+                   ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static readonly Dictionary<string, BitmapImage> ThumbnailCache = new Dictionary<string, BitmapImage>();
 
         public BitmapImage? ThumbnailSource
         {
             get
             {
-                string? path = null;
-                if (!string.IsNullOrEmpty(ImagePath) && File.Exists(ImagePath))
-                {
-                    path = ImagePath;
-                }
-                else
-                {
-                    foreach (var att in Attachments)
-                    {
-                        if (IsImageFile(att.FilePath) && File.Exists(att.FilePath))
-                        {
-                            path = att.FilePath;
-                            break;
-                        }
-                    }
-                }
+                if (string.IsNullOrEmpty(ResolvedImagePath)) return null;
 
-                if (path == null) return null;
-
+                string path = ResolvedImagePath;
                 string cacheKey;
                 try { cacheKey = $"{path}|{File.GetLastWriteTimeUtc(path).Ticks}"; }
                 catch { cacheKey = path; }
@@ -1056,8 +1107,6 @@ namespace StickyNotes__
             { "charcoal", ("#3C1B1B1B", "#424242", "#ffffff") }
         };
 
-        // Brushes are parsed once and frozen instead of re-parsed via BrushConverter on every binding access
-        // (each card binds CardBackground/CardHeaderBrush/CardTextBrush multiple times).
         private static readonly Dictionary<string, (Brush bg, Brush border, Brush text)> BrushCache = BuildBrushCache();
         private static Dictionary<string, (Brush bg, Brush border, Brush text)> BuildBrushCache()
         {
@@ -1078,5 +1127,4 @@ namespace StickyNotes__
         public Brush CardHeaderBrush => CardBrushes.border;
         public Brush CardTextBrush => CardBrushes.text;
     }
-
 }

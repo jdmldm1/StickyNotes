@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -27,6 +27,10 @@ namespace StickyNotes__
         private NoteManagerWindow? _noteManagerWnd;
         private GraphWindow? _graphWnd;
         private TemplatePickerWindow? _templatePickerWnd;
+        private TeamsMeetingWindow? _teamsMeetingWnd;
+        private KanbanWindow? _kanbanWnd;
+        private GhostScratchpadWindow? _ghostScratchpadWnd;
+        private MeetingHudWindow? _hudWnd;
         private readonly Dictionary<int, NoteWindow> _openNoteWindows = new Dictionary<int, NoteWindow>();
         public void CreateNewNote(string category = "General")
         {
@@ -41,7 +45,7 @@ namespace StickyNotes__
                 }
             }
             RefreshNotesList();
-            
+
             var noteWindow = OpenNoteWindow(noteId);
             noteWindow.FocusTitle();
         }
@@ -68,6 +72,7 @@ namespace StickyNotes__
             if (_graphWnd == null || !_graphWnd.IsLoaded)
             {
                 _graphWnd = new GraphWindow(this);
+                _graphWnd.Closed += (s, args) => _graphWnd = null;
                 _graphWnd.Show();
             }
             else
@@ -124,6 +129,68 @@ namespace StickyNotes__
         {
             NoteManagerButton_Click(this, new RoutedEventArgs());
         }
+        public void OpenTeamsMeetingWindow()
+        {
+            if (_teamsMeetingWnd == null || !_teamsMeetingWnd.IsLoaded)
+            {
+                _teamsMeetingWnd = new TeamsMeetingWindow(this);
+                _teamsMeetingWnd.Closed += (s, args) => _teamsMeetingWnd = null;
+                _teamsMeetingWnd.Show();
+            }
+            else
+            {
+                _teamsMeetingWnd.Activate();
+                if (_teamsMeetingWnd.WindowState == WindowState.Minimized)
+                    _teamsMeetingWnd.WindowState = WindowState.Normal;
+            }
+        }
+
+        public void OpenKanbanWindow()
+        {
+            if (_kanbanWnd == null || !_kanbanWnd.IsLoaded)
+            {
+                _kanbanWnd = new KanbanWindow(this);
+                _kanbanWnd.Closed += (s, args) => _kanbanWnd = null;
+                _kanbanWnd.Show();
+            }
+            else
+            {
+                _kanbanWnd.Activate();
+                _kanbanWnd.RefreshBoard();
+                if (_kanbanWnd.WindowState == WindowState.Minimized)
+                    _kanbanWnd.WindowState = WindowState.Normal;
+            }
+        }
+
+        public void OpenGhostScratchpad()
+        {
+            if (_ghostScratchpadWnd == null || !_ghostScratchpadWnd.IsLoaded)
+            {
+                _ghostScratchpadWnd = new GhostScratchpadWindow(this);
+                _ghostScratchpadWnd.Closed += (s, args) => _ghostScratchpadWnd = null;
+            }
+            _ghostScratchpadWnd.FocusAndActivate();
+        }
+
+        public void OpenMeetingHudWindow(int noteId = -1)
+        {
+            if (noteId <= 0)
+            {
+                noteId = DatabaseHelper.CreateNote("Meeting HUD Session", "", null, null, "blue");
+            }
+
+            if (_hudWnd == null || !_hudWnd.IsLoaded)
+            {
+                _hudWnd = new MeetingHudWindow(this, noteId);
+                _hudWnd.Closed += (s, args) => _hudWnd = null;
+                _hudWnd.Show();
+            }
+            else
+            {
+                _hudWnd.Activate();
+            }
+        }
+
         private void ToggleSpotlight()
         {
             if (_spotlightWnd == null) return;
@@ -158,12 +225,11 @@ namespace StickyNotes__
         {
             if (this.Visibility == Visibility.Visible)
             {
-                UnregisterAppBar();
-                this.Hide();
+                CollapseSidebar(animate: true);
             }
             else
             {
-                RestoreFromTray();
+                ExpandSidebar(animate: true);
             }
         }
         public NoteWindow OpenNoteWindow(int noteId)
@@ -407,6 +473,25 @@ namespace StickyNotes__
                 GraphButton_Click(this, new RoutedEventArgs());
             };
             menu.Items.Add(graphItem);
+
+            var kanbanItem = new MenuItem { Header = "📋  Kanban Task Board" };
+            kanbanItem.Click += (s, args) => OpenKanbanWindow();
+            menu.Items.Add(kanbanItem);
+
+            var hudItem = new MenuItem { Header = "🛰️  In-Meeting HUD & BLUF" };
+            hudItem.Click += (s, args) => OpenMeetingHudWindow();
+            menu.Items.Add(hudItem);
+
+            var scratchpadItem = new MenuItem { Header = "👻  Ghost Scratchpad" };
+            scratchpadItem.Click += (s, args) => OpenGhostScratchpad();
+            menu.Items.Add(scratchpadItem);
+
+            var teamsItem = new MenuItem { Header = "👥  Microsoft Teams Meetings..." };
+            teamsItem.Click += (s, args) =>
+            {
+                OpenTeamsMeetingWindow();
+            };
+            menu.Items.Add(teamsItem);
 
             menu.PlacementTarget = sender as UIElement;
             menu.IsOpen = true;

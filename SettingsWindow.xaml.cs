@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -28,9 +28,14 @@ namespace StickyNotes__
         public int JeffsNotesSyncIntervalMinutes { get; set; } = 15;
         public string JeffsNotesLastSyncedAt { get; set; } = "";
 
-        // Secure Notes vault: only a salt and a verifier hash, never the password itself. See VaultService.
         public string VaultSalt { get; set; } = "";
         public string VaultVerifier { get; set; } = "";
+
+        public bool ReserveScreenSpace { get; set; } = true;
+        public bool StartCollapsed { get; set; } = false;
+        public bool AutoCollapse { get; set; } = false;
+        public bool HoverToPeek { get; set; } = true;
+        public double HandleVerticalPosition { get; set; } = 0.5;
     }
 
     public partial class SettingsWindow : Window
@@ -74,6 +79,11 @@ namespace StickyNotes__
                         JeffsNotesUrlTextBox.Text = config.JeffsNotesUrl;
                         JeffsNotesIntervalTextBox.Text = (config.JeffsNotesSyncIntervalMinutes <= 0 ? 15 : config.JeffsNotesSyncIntervalMinutes).ToString();
                         UpdateLastSyncedText(config.JeffsNotesLastSyncedAt);
+
+                        ReserveScreenSpaceCheckBox.IsChecked = config.ReserveScreenSpace;
+                        StartCollapsedCheckBox.IsChecked = config.StartCollapsed;
+                        AutoCollapseCheckBox.IsChecked = config.AutoCollapse;
+                        HoverToPeekCheckBox.IsChecked = config.HoverToPeek;
                     }
                 }
                 else
@@ -82,6 +92,10 @@ namespace StickyNotes__
                     OpacitySlider.Value = 90;
                     AutoTagCheckBox.IsChecked = false;
                     JeffsNotesIntervalTextBox.Text = "15";
+                    ReserveScreenSpaceCheckBox.IsChecked = true;
+                    StartCollapsedCheckBox.IsChecked = false;
+                    AutoCollapseCheckBox.IsChecked = false;
+                    HoverToPeekCheckBox.IsChecked = true;
                 }
             }
             catch (Exception ex)
@@ -124,6 +138,11 @@ namespace StickyNotes__
                 config.JeffsNotesUrl = JeffsNotesUrlTextBox.Text.Trim();
                 config.JeffsNotesSyncIntervalMinutes = int.TryParse(JeffsNotesIntervalTextBox.Text.Trim(), out int mins) && mins > 0 ? mins : 15;
 
+                config.ReserveScreenSpace = ReserveScreenSpaceCheckBox.IsChecked == true;
+                config.StartCollapsed = StartCollapsedCheckBox.IsChecked == true;
+                config.AutoCollapse = AutoCollapseCheckBox.IsChecked == true;
+                config.HoverToPeek = HoverToPeekCheckBox.IsChecked == true;
+
                 string newJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(AppConfig.SettingsPath, newJson);
                 SettingsService.Invalidate();
@@ -142,7 +161,6 @@ namespace StickyNotes__
             }
         }
 
-
         private void ImportStickyNotesButton_Click(object sender, RoutedEventArgs e)
         {
             ImportStickyNotesButton.IsEnabled = false;
@@ -159,7 +177,7 @@ namespace StickyNotes__
                 else
                 {
                     MessageBox.Show($"Successfully imported {count} notes from Windows Sticky Notes!", "Import Notes", MessageBoxButton.OK, MessageBoxImage.Information);
-                    
+
                     if (Owner is MainWindow mainWin)
                     {
                         mainWin.RefreshNotesList();

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -71,7 +71,10 @@ namespace StickyNotes__
         {
             try
             {
-                Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+                if (SecurityHelper.IsSafeWebUri(uri))
+                {
+                    Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+                }
             }
             catch { }
         }
@@ -79,14 +82,45 @@ namespace StickyNotes__
         {
             var position = NoteRichTextBox.GetPositionFromPoint(e.GetPosition(NoteRichTextBox), true);
 
-            if (Keyboard.Modifiers == ModifierKeys.Control)
+            if (Keyboard.Modifiers == ModifierKeys.Control && position != null)
             {
-                var hyperlink = FindAncestorHyperlink(position?.Parent);
+                var hyperlink = FindAncestorHyperlink(position.Parent);
                 if (hyperlink?.NavigateUri != null)
                 {
+                    if (hyperlink.NavigateUri.Scheme == "note" && int.TryParse(hyperlink.NavigateUri.Host, out int targetNoteId))
+                    {
+                        var main = Application.Current.MainWindow as MainWindow;
+                        main?.OpenNoteWindow(targetNoteId);
+                        e.Handled = true;
+                        return;
+                    }
+
                     OpenUrl(hyperlink.NavigateUri);
                     e.Handled = true;
                     return;
+                }
+
+                var para = position.Paragraph;
+                if (para != null)
+                {
+                    string paraText = new TextRange(para.ContentStart, para.ContentEnd).Text;
+                    var matches = Regex.Matches(paraText, @"\[\[([^\]]+)\]\]");
+                    int clickOffset = new TextRange(para.ContentStart, position).Text.Length;
+                    foreach (Match m in matches)
+                    {
+                        if (clickOffset >= m.Index && clickOffset <= m.Index + m.Length)
+                        {
+                            string targetTitle = m.Groups[1].Value.Trim();
+                            var targetNote = DatabaseHelper.GetNoteByTitle(targetTitle);
+                            if (targetNote != null)
+                            {
+                                var main = Application.Current.MainWindow as MainWindow;
+                                main?.OpenNoteWindow(targetNote.Id);
+                                e.Handled = true;
+                                return;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -108,6 +142,45 @@ namespace StickyNotes__
         }
         private void NoteRichTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (WikilinkPopup != null && WikilinkPopup.IsOpen)
+            {
+                if (e.Key == Key.Down)
+                {
+                    if (WikilinkListBox.SelectedIndex < WikilinkListBox.Items.Count - 1)
+                    {
+                        WikilinkListBox.SelectedIndex++;
+                        WikilinkListBox.ScrollIntoView(WikilinkListBox.SelectedItem);
+                    }
+                    e.Handled = true;
+                    return;
+                }
+                if (e.Key == Key.Up)
+                {
+                    if (WikilinkListBox.SelectedIndex > 0)
+                    {
+                        WikilinkListBox.SelectedIndex--;
+                        WikilinkListBox.ScrollIntoView(WikilinkListBox.SelectedItem);
+                    }
+                    e.Handled = true;
+                    return;
+                }
+                if (e.Key == Key.Enter || e.Key == Key.Tab)
+                {
+                    if (WikilinkListBox.SelectedItem is Note selected)
+                    {
+                        InsertSelectedWikilink(selected);
+                        e.Handled = true;
+                        return;
+                    }
+                }
+                if (e.Key == Key.Escape)
+                {
+                    WikilinkPopup.IsOpen = false;
+                    e.Handled = true;
+                    return;
+                }
+            }
+
             if (e.Key != Key.Enter) return;
 
             var paragraph = NoteRichTextBox.CaretPosition.Paragraph;
@@ -122,6 +195,122 @@ namespace StickyNotes__
 
             NoteRichTextBox.Document.Blocks.InsertAfter(paragraph, newParagraph);
             NoteRichTextBox.CaretPosition = newRun.ContentEnd;
+        }
+
+        public void CheckWikilinkTrigger()
+        {
+            var caret = NoteRichTextBox.CaretPosition;
+            var paragraph = caret?.Paragraph;
+            if (paragraph == null)
+            {
+                if (WikilinkPopup != null && WikilinkPopup.IsOpen) WikilinkPopup.IsOpen = false;
+                return;
+            }
+
+            var range = new TextRange(paragraph.ContentStart, caret);
+            string lineText = range.Text;
+            int bracketIdx = lineText.LastIndexOf("[[", StringComparison.Ordinal);
+            if (bracketIdx >= 0)
+            {
+                int closeIdx = lineText.IndexOf("]]", bracketIdx, StringComparison.Ordinal);
+                if (closeIdx == -1)
+                {
+                    string query = lineText.Substring(bracketIdx + 2).Trim();
+                    ShowWikilinkAutocomplete(query);
+                    return;
+                }
+            }
+
+            if (WikilinkPopup != null && WikilinkPopup.IsOpen)
+            {
+                WikilinkPopup.IsOpen = false;
+            }
+        }
+
+        private void ShowWikilinkAutocomplete(string query)
+        {
+            try
+            {
+                var allNotes = DatabaseHelper.ListNotes();
+                var filtered = allNotes
+                    .Where(n => n.Id != _noteId && !string.IsNullOrWhiteSpace(n.Title))
+                    .Where(n => string.IsNullOrWhiteSpace(query) || n.Title.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                    .OrderBy(n => n.Title.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                    .ThenBy(n => n.Title)
+                    .Take(12)
+                    .ToList();
+
+                if (filtered.Count > 0)
+                {
+                    WikilinkListBox.ItemsSource = filtered;
+                    WikilinkListBox.SelectedIndex = 0;
+
+                    Rect caretRect = NoteRichTextBox.CaretPosition.GetCharacterRect(LogicalDirection.Forward);
+                    WikilinkPopup.HorizontalOffset = Math.Max(10, Math.Min(caretRect.Left, this.Width - 280));
+                    WikilinkPopup.VerticalOffset = caretRect.Bottom + 4;
+                    WikilinkPopup.IsOpen = true;
+                }
+                else
+                {
+                    WikilinkPopup.IsOpen = false;
+                }
+            }
+            catch
+            {
+                WikilinkPopup.IsOpen = false;
+            }
+        }
+
+        private void InsertSelectedWikilink(Note selectedNote)
+        {
+            try
+            {
+                var caret = NoteRichTextBox.CaretPosition;
+                var paragraph = caret.Paragraph;
+                if (paragraph != null)
+                {
+                    var range = new TextRange(paragraph.ContentStart, caret);
+                    string lineText = range.Text;
+                    int bracketIdx = lineText.LastIndexOf("[[", StringComparison.Ordinal);
+                    if (bracketIdx >= 0)
+                    {
+                        TextPointer? startPointer = paragraph.ContentStart.GetPositionAtOffset(bracketIdx);
+                        if (startPointer != null)
+                        {
+                            var replaceRange = new TextRange(startPointer, caret);
+                            replaceRange.Text = $"[[{selectedNote.Title}]] ";
+                            NoteRichTextBox.CaretPosition = replaceRange.End;
+                        }
+                    }
+                }
+
+                DatabaseHelper.AddNoteConnection(_noteId, selectedNote.Id);
+                RefreshBacklinksPanel();
+                SaveNoteContent();
+            }
+            catch { }
+            finally
+            {
+                WikilinkPopup.IsOpen = false;
+                NoteRichTextBox.Focus();
+            }
+        }
+
+        private void WikilinkListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (WikilinkListBox.SelectedItem is Note selected)
+            {
+                InsertSelectedWikilink(selected);
+            }
+        }
+
+        private void WikilinkListBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && WikilinkListBox.SelectedItem is Note selected)
+            {
+                InsertSelectedWikilink(selected);
+                e.Handled = true;
+            }
         }
         private void AutoDetectUrl(TextChangedEventArgs e)
         {

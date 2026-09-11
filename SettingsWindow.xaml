@@ -153,6 +153,33 @@
                                VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="11"/>
                 </Grid>
 
+                <!-- Collapsed Edge Handle & Docking Options -->
+                <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Margin="0,48,0,0">
+                    <CheckBox x:Name="ReserveScreenSpaceCheckBox" Foreground="#e0e0e0" Margin="0,6,0,3">
+                        <TextBlock Text="Reserve desktop workspace when expanded (AppBar)" Foreground="#e0e0e0" FontSize="11"/>
+                    </CheckBox>
+                    <TextBlock Text="When enabled, other maximized windows won't overlap the expanded sidebar. Screen space is automatically freed when collapsed."
+                               Foreground="#88ffffff" FontSize="10" TextWrapping="Wrap" Margin="22,0,0,8"/>
+
+                    <CheckBox x:Name="StartCollapsedCheckBox" Foreground="#e0e0e0" Margin="0,3,0,3">
+                        <TextBlock Text="Start collapsed to edge handle on right side" Foreground="#e0e0e0" FontSize="11"/>
+                    </CheckBox>
+                    <TextBlock Text="Launches StickyNotes as a sleek edge handle pinned to the right edge instead of the full sidebar."
+                               Foreground="#88ffffff" FontSize="10" TextWrapping="Wrap" Margin="22,0,0,8"/>
+
+                    <CheckBox x:Name="AutoCollapseCheckBox" Foreground="#e0e0e0" Margin="0,3,0,3">
+                        <TextBlock Text="Auto-collapse when clicking outside sidebar" Foreground="#e0e0e0" FontSize="11"/>
+                    </CheckBox>
+                    <TextBlock Text="Automatically collapses the sidebar back into the edge handle when you click on other applications."
+                               Foreground="#88ffffff" FontSize="10" TextWrapping="Wrap" Margin="22,0,0,8"/>
+
+                    <CheckBox x:Name="HoverToPeekCheckBox" Foreground="#e0e0e0" Margin="0,3,0,3">
+                        <TextBlock Text="Hover over edge handle to peek at notes" Foreground="#e0e0e0" FontSize="11"/>
+                    </CheckBox>
+                    <TextBlock Text="Glides open the sidebar when hovering over the edge handle, and slides it back closed when the mouse leaves."
+                               Foreground="#88ffffff" FontSize="10" TextWrapping="Wrap" Margin="22,0,0,4"/>
+                </StackPanel>
+
                 <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Margin="0,15,0,5">
                     <TextBlock Text="JeffsNotes Sync" FontSize="13" FontWeight="SemiBold" Foreground="#0084ff"/>
                     <Border BorderBrush="#333333" BorderThickness="0,0,0,1" Margin="0,5,0,10"/>

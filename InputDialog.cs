@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -61,28 +61,28 @@ namespace StickyNotes__
             grid.Children.Add(_inputTextBox);
 
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            
-            var okButton = new Button 
-            { 
-                Content = "OK", 
-                Width = 70, 
-                Height = 26, 
-                Margin = new Thickness(0, 0, 8, 0), 
-                Background = new SolidColorBrush(Color.FromRgb(0, 132, 255)), 
-                Foreground = Brushes.White, 
-                BorderThickness = new Thickness(0), 
+
+            var okButton = new Button
+            {
+                Content = "OK",
+                Width = 70,
+                Height = 26,
+                Margin = new Thickness(0, 0, 8, 0),
+                Background = new SolidColorBrush(Color.FromRgb(0, 132, 255)),
+                Foreground = Brushes.White,
+                BorderThickness = new Thickness(0),
                 FontWeight = FontWeights.Bold,
                 Cursor = Cursors.Hand
             };
             okButton.Click += (s, e) => { Answer = _inputTextBox.Text.Trim(); DialogResult = true; Close(); };
-            
-            var cancelButton = new Button 
-            { 
-                Content = "Cancel", 
-                Width = 70, 
-                Height = 26, 
-                Background = new SolidColorBrush(Color.FromRgb(58, 58, 58)), 
-                Foreground = Brushes.White, 
+
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                Width = 70,
+                Height = 26,
+                Background = new SolidColorBrush(Color.FromRgb(58, 58, 58)),
+                Foreground = Brushes.White,
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand
             };

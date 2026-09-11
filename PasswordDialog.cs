@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -6,8 +6,6 @@ using System.Windows.Media;
 
 namespace StickyNotes__
 {
-    // Masked password entry. In "confirm" mode (used when setting up or changing the vault
-    // password) a second field is shown and both must match before OK is accepted.
     public class PasswordDialog : Window
     {
         private readonly PasswordBox _passwordBox;

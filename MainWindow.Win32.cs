@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -32,8 +32,23 @@ namespace StickyNotes__
 
             _spotlightWnd = new SpotlightWindow(this);
             _quickCaptureWnd = new QuickCaptureWindow(this);
+            _edgeHandleWnd = new EdgeHandleWindow(this);
 
-            RegisterAppBar();
+            if (SettingsService.Current.StartCollapsed)
+            {
+                this.Left = SystemParameters.PrimaryScreenWidth + 100;
+            }
+            else
+            {
+                if (SettingsService.Current.ReserveScreenSpace)
+                {
+                    RegisterAppBar();
+                }
+                else
+                {
+                    SnapToRightEdge();
+                }
+            }
 
             ComponentDispatcher.ThreadFilterMessage += ComponentDispatcher_ThreadFilterMessage;
             RegisterAllHotKeys();
@@ -44,12 +59,25 @@ namespace StickyNotes__
         private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             const int WM_ACTIVATE = 0x0006;
+            const int WM_APPBAR_CALLBACK = 0x8000 + 101;
+            const int ABN_POSCHANGED = 0x00000001;
 
             if (msg == WM_ACTIVATE)
             {
                 if (_isAppBarRegistered)
                 {
                     Win32Helper.SHAppBarMessage(Win32Helper.ABM_ACTIVATE, ref _appBarData);
+                }
+            }
+            else if (msg == WM_APPBAR_CALLBACK)
+            {
+                if (wParam.ToInt32() == ABN_POSCHANGED)
+                {
+                    if (_isAppBarRegistered && Visibility == Visibility.Visible && !_isAnimating)
+                    {
+                        SetAppBarPosition(350);
+                        handled = true;
+                    }
                 }
             }
 
@@ -172,7 +200,7 @@ namespace StickyNotes__
         }
         private void SetAppBarPosition(int width)
         {
-            if (!_isAppBarRegistered) return;
+            if (!_isAppBarRegistered || _isAnimating) return;
 
             var wndHelper = new WindowInteropHelper(this);
             var (dpiX, dpiY) = GetDpiFactors();

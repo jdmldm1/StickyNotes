@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -172,10 +172,6 @@ namespace StickyNotes__
             return json.Substring(0, lastCompleteEntryEnd + 1) + "}";
         }
 
-        // Finds notes with a screenshot image but no OCR text (e.g. captured before OCR worked, or a
-        // scan that silently failed) and runs OCR on them now. Never overwrites text the user already
-        // typed into the note - if the note body isn't empty, the OCR result is stored only in the
-        // searchable ocr_text column, not merged into the visible content.
         public async Task<int> RunOcrBackfillAsync()
         {
             var candidates = DatabaseHelper.ListNotes(null, null)

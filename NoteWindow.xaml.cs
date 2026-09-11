@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Packaging;
@@ -16,7 +16,6 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Threading;
 
-
 namespace StickyNotes__
 {
     public partial class NoteWindow : Window
@@ -28,7 +27,7 @@ namespace StickyNotes__
         private string _lastHistoryContent = "";
         private string _lastHistoryPlain = "";
         private DateTime _lastHistoryTime = DateTime.MinValue;
-        private static readonly System.Collections.Generic.Dictionary<string, NoteColorProfile> ColorProfiles = 
+        private static readonly System.Collections.Generic.Dictionary<string, NoteColorProfile> ColorProfiles =
             new System.Collections.Generic.Dictionary<string, NoteColorProfile>
         {
             { "yellow", new NoteColorProfile("Yellow", "#fff3c4", "#ffe9a1", "#CC221C12", "#D49A13", "#000000", "#ffffff") },
@@ -110,8 +109,6 @@ namespace StickyNotes__
 
             if (_note.IsSecure)
             {
-                // Secure notes keep a deliberately small surface: no attachments/images/backlinks,
-                // just title + encrypted body. Nothing sensitive is ever loaded until unlocked.
                 ImageBorder.Visibility = Visibility.Collapsed;
                 AttachmentsPanel.Children.Clear();
 
@@ -138,7 +135,7 @@ namespace StickyNotes__
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.UriSource = new Uri(_note.ImagePath);
                     bitmap.EndInit();
-                    
+
                     NoteImage.Source = bitmap;
                     ImageBorder.Visibility = Visibility.Visible;
                 }
@@ -167,7 +164,7 @@ namespace StickyNotes__
                     if (firstBlock != null)
                     {
                         string firstBlockText = new TextRange(firstBlock.ContentStart, firstBlock.ContentEnd).Text.Trim();
-                        bool matches = firstBlockText == _note.Title || 
+                        bool matches = firstBlockText == _note.Title ||
                                        (_note.Title.EndsWith("...") && _note.Title.Length >= 4 && firstBlockText.StartsWith(_note.Title.Substring(0, _note.Title.Length - 3)));
                         if (matches)
                         {
@@ -214,6 +211,7 @@ namespace StickyNotes__
             RefreshCategoryDropdown();
             UpdateWordCount();
             RefreshBacklinksPanel();
+            ApplyClassification();
         }
         private void DecryptAndShowSecureNote()
         {
@@ -239,7 +237,6 @@ namespace StickyNotes__
 
             RewireInteractiveElements();
 
-            // Secure notes never populate Time Machine history (it would store plaintext snapshots).
             _lastHistoryContent = "";
             _lastHistoryPlain = "";
             _lastHistoryTime = DateTime.Now;
@@ -275,6 +272,9 @@ namespace StickyNotes__
         }
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            if (AudioDictationHelper.IsDictating) AudioDictationHelper.StopDictation();
+            if (AudioDictationHelper.IsRecordingMemo) AudioDictationHelper.StopVoiceMemo();
+
             string title = NoteTitleTextBox.Text.Trim();
             TextRange range = new TextRange(NoteRichTextBox.Document.ContentStart, NoteRichTextBox.Document.ContentEnd);
             string plainText = range.Text.Trim();
@@ -296,7 +296,7 @@ namespace StickyNotes__
         private void NotifyNotesChanged()
         {
             var main = Application.Current.MainWindow as MainWindow;
-            main?.RefreshNotesList();
+            main?.QueueRefreshNotesList();
         }
     }
 }

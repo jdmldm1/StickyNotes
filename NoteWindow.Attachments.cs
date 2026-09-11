@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -121,6 +121,12 @@ namespace StickyNotes__
                 MessageBox.Show("This file no longer exists on disk.", "File Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
+
+            if (!SecurityHelper.ConfirmDangerousFileExecution(attachment.FilePath))
+            {
+                return;
+            }
+
             try
             {
                 Process.Start(new ProcessStartInfo(attachment.FilePath) { UseShellExecute = true });

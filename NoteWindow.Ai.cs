@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -223,7 +223,7 @@ namespace StickyNotes__
                 string prompt = $"You are a helpful desktop note assistant. Answer the user's question contextually based on the note text provided below. If there are screenshots attached, their OCR text is also included. Answer clearly and keep it short.\n\nNote Context:\n{noteText}\n\nUser Question:\n{query}";
 
                 string aiResponse = await AiHelper.GenerateTextAsync(prompt);
-                
+
                 RemoveTypingIndicator();
                 if (string.IsNullOrEmpty(aiResponse))
                 {

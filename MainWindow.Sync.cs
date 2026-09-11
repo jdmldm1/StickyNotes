@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -55,7 +55,6 @@ namespace StickyNotes__
             }
             catch (Exception ex)
             {
-                // Background sync failures (e.g. server unreachable from work) are expected and silent.
                 Console.WriteLine("Background JeffsNotes sync failed: " + ex.Message);
             }
         }

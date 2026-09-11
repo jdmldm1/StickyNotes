@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -37,11 +37,7 @@ namespace StickyNotes__
             try
             {
                 string currentCategory = _note.Category ?? "General";
-                var categories = DatabaseHelper.ListNotes(null, null)
-                    .Select(n => n.Category ?? "General")
-                    .Distinct()
-                    .OrderBy(c => c)
-                    .ToList();
+                var categories = DatabaseHelper.ListAllCategories();
                 if (!categories.Contains(currentCategory)) categories.Add(currentCategory);
                 categories.Add(AddNewCategoryOption);
 

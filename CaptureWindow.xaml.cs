@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -11,12 +11,10 @@ namespace StickyNotes__
 {
     public partial class CaptureWindow : Window
     {
-
-
         private System.Windows.Point _startPoint;
         private bool _isSelecting;
         private BitmapSource? _screenBitmap;
-        
+
         public string? CapturedImagePath { get; private set; }
 
         public CaptureWindow()
@@ -71,7 +69,7 @@ namespace StickyNotes__
             {
                 _startPoint = e.GetPosition(CaptureCanvas);
                 _isSelecting = true;
-                
+
                 SelectionBorder.Visibility = Visibility.Visible;
                 CroppedImageDisplay.Visibility = Visibility.Visible;
             }
@@ -82,7 +80,7 @@ namespace StickyNotes__
             if (_isSelecting && _screenBitmap != null)
             {
                 System.Windows.Point currentPoint = e.GetPosition(CaptureCanvas);
-                
+
                 double x = Math.Min(_startPoint.X, currentPoint.X);
                 double y = Math.Min(_startPoint.Y, currentPoint.Y);
                 double width = Math.Max(1, Math.Abs(_startPoint.X - currentPoint.X));
@@ -97,7 +95,7 @@ namespace StickyNotes__
                 {
                     var rect = new Int32Rect((int)x, (int)y, (int)width, (int)height);
                     var croppedBmp = new CroppedBitmap(_screenBitmap, rect);
-                    
+
                     CroppedImageDisplay.Source = croppedBmp;
                     Canvas.SetLeft(CroppedImageDisplay, x);
                     Canvas.SetTop(CroppedImageDisplay, y);

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -62,7 +62,24 @@ namespace StickyNotes__
 
             try
             {
-                Directory.Delete(oldDir, true);
+                if (string.Equals(Path.GetFullPath(oldDir).TrimEnd('\\', '/'), Path.GetFullPath(DefaultAppDir).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var f in Directory.GetFiles(oldDir))
+                    {
+                        if (!string.Equals(Path.GetFileName(f), "datalocation.txt", StringComparison.OrdinalIgnoreCase))
+                        {
+                            try { File.Delete(f); } catch { }
+                        }
+                    }
+                    foreach (var d in Directory.GetDirectories(oldDir))
+                    {
+                        try { Directory.Delete(d, true); } catch { }
+                    }
+                }
+                else
+                {
+                    Directory.Delete(oldDir, true);
+                }
             }
             catch { }
         }
@@ -106,6 +123,7 @@ namespace StickyNotes__
         public bool IsFavorite { get; set; }
         public bool IsTemplate { get; set; }
         public bool IsSecure { get; set; }
+        public string? Classification { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }
@@ -136,7 +154,7 @@ namespace StickyNotes__
 
     public static class DatabaseHelper
     {
-        private static string GetConnectionString() => $"Data Source={AppConfig.DbPath}";
+        private static string GetConnectionString() => $"Data Source={AppConfig.DbPath};Mode=ReadWriteCreate;Cache=Shared;";
 
         public static void InitDatabase()
         {
@@ -145,9 +163,13 @@ namespace StickyNotes__
                 conn.Open();
                 var cmd = conn.CreateCommand();
 
-                // WAL mode allows concurrent readers/writers and avoids taking a whole-file lock on every write,
-                // which matters once the notes list is doing frequent background saves alongside list refreshes.
-                cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+                cmd.CommandText = @"
+                    PRAGMA journal_mode=WAL;
+                    PRAGMA synchronous=NORMAL;
+                    PRAGMA temp_store=MEMORY;
+                    PRAGMA cache_size=-8000;
+                    PRAGMA mmap_size=268435456;
+                ";
                 cmd.ExecuteNonQuery();
 
                 cmd.CommandText = @"
@@ -276,10 +298,14 @@ namespace StickyNotes__
 
                 try
                 {
-                    // Secure notes store AES-GCM-encrypted content (see VaultService) instead of plain
-                    // XamlPackage. plain_text/ocr_text are intentionally left empty for these notes so
-                    // no sensitive snippet ever lands in search results or list previews while locked.
                     cmd.CommandText = "ALTER TABLE notes ADD COLUMN is_secure INTEGER DEFAULT 0;";
+                    cmd.ExecuteNonQuery();
+                }
+                catch {}
+
+                try
+                {
+                    cmd.CommandText = "ALTER TABLE notes ADD COLUMN classification TEXT;";
                     cmd.ExecuteNonQuery();
                 }
                 catch {}
@@ -305,8 +331,6 @@ namespace StickyNotes__
 
                 try
                 {
-                    // No FK/cascade on local_note_id: when a note is deleted locally, this row must
-                    // survive so JeffsNotesSyncService can detect the deletion and propagate it remotely.
                     cmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS jeffsnotes_sync_map (
                             local_note_id INTEGER PRIMARY KEY,
@@ -320,20 +344,24 @@ namespace StickyNotes__
                 }
                 catch {}
 
-                // Supporting indexes for the columns ListNotes()/RefreshNotesList() filter and sort on.
                 cmd.CommandText = @"
                     CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
                     CREATE INDEX IF NOT EXISTS idx_notes_favorite_pinned ON notes(is_favorite, is_pinned_desktop);
                     CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category);
+                    CREATE INDEX IF NOT EXISTS idx_notes_secure ON notes(is_secure);
                     CREATE INDEX IF NOT EXISTS idx_note_tags_note_id ON note_tags(note_id);
                     CREATE INDEX IF NOT EXISTS idx_note_tags_tag_id ON note_tags(tag_id);
                     CREATE INDEX IF NOT EXISTS idx_note_attachments_note_id ON note_attachments(note_id);
+                    CREATE INDEX IF NOT EXISTS idx_note_connections_from ON note_connections(from_note_id);
+                    CREATE INDEX IF NOT EXISTS idx_note_connections_to ON note_connections(to_note_id);
                 ";
                 cmd.ExecuteNonQuery();
 
                 CleanupStickyNotesMetadataInDb(conn);
 
                 BackfillPlainText(conn);
+
+                InitFts5(conn);
             }
         }
 
@@ -352,17 +380,70 @@ namespace StickyNotes__
                     }
                 }
 
-                foreach (var (id, content) in toBackfill)
+                if (toBackfill.Count > 0)
                 {
-                    string plainText = NoteContentHelper.ExtractPlainText(content);
-                    var updateCmd = conn.CreateCommand();
-                    updateCmd.CommandText = "UPDATE notes SET plain_text = $plain_text WHERE id = $id;";
-                    updateCmd.Parameters.AddWithValue("$plain_text", plainText);
-                    updateCmd.Parameters.AddWithValue("$id", id);
-                    updateCmd.ExecuteNonQuery();
+                    using (var tx = conn.BeginTransaction())
+                    {
+                        var updateCmd = conn.CreateCommand();
+                        updateCmd.Transaction = tx;
+                        updateCmd.CommandText = "UPDATE notes SET plain_text = $plain_text WHERE id = $id;";
+                        var pPlainText = updateCmd.Parameters.Add("$plain_text", SqliteType.Text);
+                        var pId = updateCmd.Parameters.Add("$id", SqliteType.Integer);
+
+                        foreach (var (id, content) in toBackfill)
+                        {
+                            string plainText = NoteContentHelper.ExtractPlainText(content);
+                            pPlainText.Value = plainText;
+                            pId.Value = id;
+                            updateCmd.ExecuteNonQuery();
+                        }
+                        tx.Commit();
+                    }
                 }
             }
             catch { }
+        }
+
+        private static void InitFts5(SqliteConnection conn)
+        {
+            try
+            {
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+                        note_id UNINDEXED,
+                        title,
+                        plain_text,
+                        ocr_text,
+                        tokenize='unicode61'
+                    );
+
+                    CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+                        INSERT INTO notes_fts(note_id, title, plain_text, ocr_text)
+                        VALUES (new.id, new.title, CASE WHEN new.is_secure = 1 THEN '' ELSE COALESCE(new.plain_text, '') END, CASE WHEN new.is_secure = 1 THEN '' ELSE COALESCE(new.ocr_text, '') END);
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+                        DELETE FROM notes_fts WHERE note_id = old.id;
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+                        DELETE FROM notes_fts WHERE note_id = old.id;
+                        INSERT INTO notes_fts(note_id, title, plain_text, ocr_text)
+                        VALUES (new.id, new.title, CASE WHEN new.is_secure = 1 THEN '' ELSE COALESCE(new.plain_text, '') END, CASE WHEN new.is_secure = 1 THEN '' ELSE COALESCE(new.ocr_text, '') END);
+                    END;
+
+                    INSERT INTO notes_fts(note_id, title, plain_text, ocr_text)
+                    SELECT id, title, CASE WHEN is_secure = 1 THEN '' ELSE COALESCE(plain_text, '') END, CASE WHEN is_secure = 1 THEN '' ELSE COALESCE(ocr_text, '') END
+                    FROM notes
+                    WHERE id NOT IN (SELECT note_id FROM notes_fts);
+                ";
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("FTS5 initialization notice: " + ex.Message);
+            }
         }
 
         private static void CleanupStickyNotesMetadataInDb(Microsoft.Data.Sqlite.SqliteConnection conn)
@@ -383,46 +464,59 @@ namespace StickyNotes__
                     }
                 }
 
-                var metaRegex = new System.Text.RegularExpressions.Regex(
-                    @"\\(?:id|np|li|wi|ts|bidi|lnspc)=[^\s\\]*\s?",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-                foreach (var (nid, title, content) in toClean)
+                if (toClean.Count > 0)
                 {
-                    string cleanTitle   = metaRegex.Replace(title,   "").Trim();
-                    string cleanContent = metaRegex.Replace(content, "").Trim();
-                    if (cleanTitle == title && cleanContent == content) continue;
+                    var metaRegex = new System.Text.RegularExpressions.Regex(
+                        @"\\(?:id|np|li|wi|ts|bidi|lnspc)=[^\s\\]*\s?",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-                    var upd = conn.CreateCommand();
-                    upd.CommandText = "UPDATE notes SET title = $t, content = $c WHERE id = $id;";
-                    upd.Parameters.AddWithValue("$t",   cleanTitle);
-                    upd.Parameters.AddWithValue("$c",   cleanContent);
-                    upd.Parameters.AddWithValue("$id",  nid);
-                    upd.ExecuteNonQuery();
+                    using (var tx = conn.BeginTransaction())
+                    {
+                        var upd = conn.CreateCommand();
+                        upd.Transaction = tx;
+                        upd.CommandText = "UPDATE notes SET title = $t, content = $c WHERE id = $id;";
+                        var pTitle = upd.Parameters.Add("$t", SqliteType.Text);
+                        var pContent = upd.Parameters.Add("$c", SqliteType.Text);
+                        var pId = upd.Parameters.Add("$id", SqliteType.Integer);
+
+                        foreach (var (nid, title, content) in toClean)
+                        {
+                            string cleanTitle   = metaRegex.Replace(title,   "").Trim();
+                            string cleanContent = metaRegex.Replace(content, "").Trim();
+                            if (cleanTitle == title && cleanContent == content) continue;
+
+                            pTitle.Value = cleanTitle;
+                            pContent.Value = cleanContent;
+                            pId.Value = nid;
+                            upd.ExecuteNonQuery();
+                        }
+                        tx.Commit();
+                    }
                 }
             }
             catch { }
         }
 
-        public static int CreateNote(string title = "", string content = "", string? imagePath = null, string? ocrText = null, string color = "yellow", bool isSecure = false)
+        public static int CreateNote(string title = "", string content = "", string? imagePath = null, string? ocrText = null, string color = "yellow", bool isSecure = false, string? classification = null)
         {
             using (var conn = new SqliteConnection(GetConnectionString()))
             {
                 conn.Open();
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    INSERT INTO notes (title, content, plain_text, image_path, ocr_text, color, is_secure)
-                    VALUES ($title, $content, $plain_text, $image_path, $ocr_text, $color, $is_secure);
+                    INSERT INTO notes (title, content, plain_text, image_path, ocr_text, color, is_secure, classification)
+                    VALUES ($title, $content, $plain_text, $image_path, $ocr_text, $color, $is_secure, $classification);
                     SELECT last_insert_rowid();
                 ";
                 cmd.Parameters.AddWithValue("$title", title);
                 cmd.Parameters.AddWithValue("$content", content);
-                // Secure note content is opaque ciphertext - never derive a searchable snippet from it.
+
                 cmd.Parameters.AddWithValue("$plain_text", isSecure ? "" : NoteContentHelper.ExtractPlainText(content));
                 cmd.Parameters.AddWithValue("$image_path", (object?)imagePath ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$ocr_text", isSecure ? DBNull.Value : (object?)ocrText ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$color", color);
                 cmd.Parameters.AddWithValue("$is_secure", isSecure ? 1 : 0);
+                cmd.Parameters.AddWithValue("$classification", (object?)classification ?? DBNull.Value);
 
                 return Convert.ToInt32(cmd.ExecuteScalar());
             }
@@ -452,12 +546,13 @@ namespace StickyNotes__
                         canvas_y = $canvas_y,
                         category = $category,
                         is_template = $is_template,
-                        is_secure = $is_secure
+                        is_secure = $is_secure,
+                        classification = $classification
                     WHERE id = $id;
                 ";
                 cmd.Parameters.AddWithValue("$title", note.Title);
                 cmd.Parameters.AddWithValue("$content", note.Content);
-                // Secure note content is opaque ciphertext - never derive a searchable snippet from it.
+
                 cmd.Parameters.AddWithValue("$plain_text", note.IsSecure ? "" : NoteContentHelper.ExtractPlainText(note.Content));
                 cmd.Parameters.AddWithValue("$image_path", (object?)note.ImagePath ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$ocr_text", note.IsSecure ? DBNull.Value : (object?)note.OcrText ?? DBNull.Value);
@@ -473,6 +568,7 @@ namespace StickyNotes__
                 cmd.Parameters.AddWithValue("$category", note.Category);
                 cmd.Parameters.AddWithValue("$is_template", note.IsTemplate ? 1 : 0);
                 cmd.Parameters.AddWithValue("$is_secure", note.IsSecure ? 1 : 0);
+                cmd.Parameters.AddWithValue("$classification", (object?)note.Classification ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$id", note.Id);
 
                 cmd.ExecuteNonQuery();
@@ -562,7 +658,7 @@ namespace StickyNotes__
             return null;
         }
 
-        public static List<Note> ListNotes(string? searchQuery = null, string? tagFilter = null, string? categoryFilter = null, DateTime? updatedSince = null)
+        public static List<Note> ListNotes(string? searchQuery = null, string? tagFilter = null, string? categoryFilter = null, DateTime? updatedSince = null, bool includeContent = false)
         {
             var notes = new List<Note>();
             using (var conn = new SqliteConnection(GetConnectionString()))
@@ -570,7 +666,11 @@ namespace StickyNotes__
                 conn.Open();
                 var cmd = conn.CreateCommand();
 
-                string query = "SELECT DISTINCT n.* FROM notes n";
+                string columns = includeContent
+                    ? "n.id, n.title, n.content, n.plain_text, n.image_path, n.ocr_text, n.color, n.is_pinned_desktop, n.is_popped_out, n.x, n.y, n.w, n.h, n.canvas_x, n.canvas_y, n.category, n.is_favorite, n.is_template, n.is_secure, n.classification, n.created_at, n.updated_at"
+                    : "n.id, n.title, n.plain_text, n.image_path, n.ocr_text, n.color, n.is_pinned_desktop, n.is_popped_out, n.x, n.y, n.w, n.h, n.canvas_x, n.canvas_y, n.category, n.is_favorite, n.is_template, n.is_secure, n.classification, n.created_at, n.updated_at";
+
+                string query = $"SELECT DISTINCT {columns} FROM notes n";
                 var conditions = new List<string>();
 
                 if (!string.IsNullOrEmpty(tagFilter))
@@ -608,13 +708,143 @@ namespace StickyNotes__
 
                 using (var reader = cmd.ExecuteReader())
                 {
+                    int ordId = reader.GetOrdinal("id");
+                    int ordTitle = reader.GetOrdinal("title");
+                    int ordContent = includeContent ? reader.GetOrdinal("content") : -1;
+                    int ordPlainText = reader.GetOrdinal("plain_text");
+                    int ordImagePath = reader.GetOrdinal("image_path");
+                    int ordOcrText = reader.GetOrdinal("ocr_text");
+                    int ordColor = reader.GetOrdinal("color");
+                    int ordIsPinned = reader.GetOrdinal("is_pinned_desktop");
+                    int ordIsPopped = reader.GetOrdinal("is_popped_out");
+                    int ordX = reader.GetOrdinal("x");
+                    int ordY = reader.GetOrdinal("y");
+                    int ordW = reader.GetOrdinal("w");
+                    int ordH = reader.GetOrdinal("h");
+                    int ordCanvasX = reader.GetOrdinal("canvas_x");
+                    int ordCanvasY = reader.GetOrdinal("canvas_y");
+                    int ordCategory = reader.GetOrdinal("category");
+                    int ordIsFavorite = reader.GetOrdinal("is_favorite");
+                    int ordIsTemplate = reader.GetOrdinal("is_template");
+                    int ordIsSecure = reader.GetOrdinal("is_secure");
+                    int ordClassification = -1;
+                    try { ordClassification = reader.GetOrdinal("classification"); } catch {}
+                    int ordCreatedAt = reader.GetOrdinal("created_at");
+                    int ordUpdatedAt = reader.GetOrdinal("updated_at");
+
                     while (reader.Read())
                     {
-                        notes.Add(ReadNote(reader));
+                        notes.Add(new Note
+                        {
+                            Id = reader.GetInt32(ordId),
+                            Title = reader.IsDBNull(ordTitle) ? "" : reader.GetString(ordTitle),
+                            Content = ordContent >= 0 && !reader.IsDBNull(ordContent) ? reader.GetString(ordContent) : "",
+                            PlainText = ordPlainText >= 0 && !reader.IsDBNull(ordPlainText) ? reader.GetString(ordPlainText) : "",
+                            ImagePath = ordImagePath >= 0 && !reader.IsDBNull(ordImagePath) ? reader.GetString(ordImagePath) : null,
+                            OcrText = ordOcrText >= 0 && !reader.IsDBNull(ordOcrText) ? reader.GetString(ordOcrText) : null,
+                            Color = ordColor >= 0 && !reader.IsDBNull(ordColor) ? reader.GetString(ordColor) : "yellow",
+                            IsPinnedDesktop = ordIsPinned >= 0 && reader.GetInt32(ordIsPinned) == 1,
+                            IsPoppedOut = ordIsPopped >= 0 && reader.GetInt32(ordIsPopped) == 1,
+                            X = ordX >= 0 && !reader.IsDBNull(ordX) ? reader.GetInt32(ordX) : null,
+                            Y = ordY >= 0 && !reader.IsDBNull(ordY) ? reader.GetInt32(ordY) : null,
+                            W = ordW >= 0 && !reader.IsDBNull(ordW) ? reader.GetInt32(ordW) : null,
+                            H = ordH >= 0 && !reader.IsDBNull(ordH) ? reader.GetInt32(ordH) : null,
+                            CanvasX = ordCanvasX >= 0 && !reader.IsDBNull(ordCanvasX) ? reader.GetDouble(ordCanvasX) : 50,
+                            CanvasY = ordCanvasY >= 0 && !reader.IsDBNull(ordCanvasY) ? reader.GetDouble(ordCanvasY) : 50,
+                            Category = ordCategory >= 0 && !reader.IsDBNull(ordCategory) ? reader.GetString(ordCategory) : "General",
+                            IsFavorite = ordIsFavorite >= 0 && !reader.IsDBNull(ordIsFavorite) && reader.GetInt32(ordIsFavorite) == 1,
+                            IsTemplate = ordIsTemplate >= 0 && !reader.IsDBNull(ordIsTemplate) && reader.GetInt32(ordIsTemplate) == 1,
+                            IsSecure = ordIsSecure >= 0 && !reader.IsDBNull(ordIsSecure) && reader.GetInt32(ordIsSecure) == 1,
+                            Classification = ordClassification >= 0 && !reader.IsDBNull(ordClassification) ? reader.GetString(ordClassification) : null,
+                            CreatedAt = ordCreatedAt >= 0 && !reader.IsDBNull(ordCreatedAt) ? DateTime.Parse(reader.GetString(ordCreatedAt)) : DateTime.MinValue,
+                            UpdatedAt = ordUpdatedAt >= 0 && !reader.IsDBNull(ordUpdatedAt) ? DateTime.Parse(reader.GetString(ordUpdatedAt)) : DateTime.MinValue
+                        });
                     }
                 }
             }
             return notes;
+        }
+
+        public static List<Note> SearchNotesFts(string query, string? tagFilter = null, string? categoryFilter = null, DateTime? updatedSince = null)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return ListNotes(null, tagFilter, categoryFilter, updatedSince);
+            }
+
+            try
+            {
+                var words = query.Split(new[] { ' ', '\t', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(w => w.Trim().Replace("\"", "\"\""))
+                    .Where(w => !string.IsNullOrWhiteSpace(w) && !w.All(c => !char.IsLetterOrDigit(c)))
+                    .Select(w => $"\"{w}\"*")
+                    .ToList();
+
+                if (words.Count == 0)
+                {
+                    return ListNotes(query, tagFilter, categoryFilter, updatedSince);
+                }
+
+                string ftsMatch = string.Join(" ", words);
+                var notes = new List<Note>();
+
+                using (var conn = new SqliteConnection(GetConnectionString()))
+                {
+                    conn.Open();
+                    var cmd = conn.CreateCommand();
+
+                    string sql = @"
+                        SELECT n.id, n.title, n.plain_text, n.image_path, n.ocr_text, n.color,
+                               n.is_pinned_desktop, n.is_popped_out, n.x, n.y, n.w, n.h,
+                               n.canvas_x, n.canvas_y, n.category, n.is_favorite, n.is_template, n.is_secure,
+                               n.created_at, n.updated_at,
+                               bm25(notes_fts, 5.0, 2.0, 1.0) AS rank
+                        FROM notes_fts fts
+                        JOIN notes n ON fts.note_id = n.id";
+
+                    var conditions = new List<string> { "notes_fts MATCH $fts" };
+                    cmd.Parameters.AddWithValue("$fts", ftsMatch);
+
+                    if (!string.IsNullOrEmpty(tagFilter))
+                    {
+                        sql += " JOIN note_tags nt ON n.id = nt.note_id JOIN tags t ON nt.tag_id = t.id";
+                        conditions.Add("t.name = $tag");
+                        cmd.Parameters.AddWithValue("$tag", tagFilter.Trim().ToLower());
+                    }
+
+                    if (!string.IsNullOrEmpty(categoryFilter))
+                    {
+                        conditions.Add("n.category = $category");
+                        cmd.Parameters.AddWithValue("$category", categoryFilter);
+                    }
+
+                    if (updatedSince != null)
+                    {
+                        conditions.Add("n.updated_at >= $updated_since");
+                        cmd.Parameters.AddWithValue("$updated_since", updatedSince.Value.ToString("yyyy-MM-dd HH:mm:ss"));
+                    }
+
+                    sql += " WHERE " + string.Join(" AND ", conditions);
+                    sql += " ORDER BY n.is_favorite DESC, rank ASC, n.updated_at DESC;";
+                    cmd.CommandText = sql;
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        var rowReader = new NoteRowReader(reader);
+                        while (reader.Read())
+                        {
+                            notes.Add(rowReader.Read(reader));
+                        }
+                    }
+                }
+
+                return notes;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("SearchNotesFts fallback to ListNotes: " + ex.Message);
+                return ListNotes(query, tagFilter, categoryFilter, updatedSince);
+            }
         }
 
         public static void AddTagToNote(int noteId, string tagName)
@@ -728,6 +958,32 @@ namespace StickyNotes__
             return tags;
         }
 
+        public static List<string> ListAllCategories()
+        {
+            var categories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "General" };
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT DISTINCT category FROM notes WHERE category IS NOT NULL AND category != '';";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (!reader.IsDBNull(0))
+                        {
+                            string cat = reader.GetString(0).Trim();
+                            if (!string.IsNullOrEmpty(cat))
+                            {
+                                categories.Add(cat);
+                            }
+                        }
+                    }
+                }
+            }
+            return categories.OrderBy(c => c).ToList();
+        }
+
         public static Dictionary<int, List<string>> GetAllNoteTagsMap()
         {
             var map = new Dictionary<int, List<string>>();
@@ -838,7 +1094,8 @@ namespace StickyNotes__
                 cmd.Parameters.AddWithValue("$noteId", noteId);
                 using (var reader = cmd.ExecuteReader())
                 {
-                    while (reader.Read()) notes.Add(ReadNote(reader));
+                    var rowReader = new NoteRowReader(reader);
+                    while (reader.Read()) notes.Add(rowReader.Read(reader));
                 }
             }
             return notes;
@@ -867,7 +1124,8 @@ namespace StickyNotes__
                 cmd.CommandText = "SELECT * FROM notes WHERE is_template = 1 ORDER BY updated_at DESC;";
                 using (var reader = cmd.ExecuteReader())
                 {
-                    while (reader.Read()) notes.Add(ReadNote(reader));
+                    var rowReader = new NoteRowReader(reader);
+                    while (reader.Read()) notes.Add(rowReader.Read(reader));
                 }
             }
             return notes;
@@ -894,7 +1152,7 @@ namespace StickyNotes__
                     WHERE note_id = $note_id AND id NOT IN (
                         SELECT id FROM note_history
                         WHERE note_id = $note_id
-                        ORDER BY versioned_at DESC LIMIT 10
+                        ORDER BY versioned_at DESC LIMIT 25
                     );
                 ";
                 cleanupCmd.Parameters.AddWithValue("$note_id", noteId);
@@ -1109,71 +1367,94 @@ namespace StickyNotes__
             }
         }
 
+        private sealed class NoteRowReader
+        {
+            public int OrdId = -1;
+            public int OrdTitle = -1;
+            public int OrdContent = -1;
+            public int OrdPlainText = -1;
+            public int OrdImagePath = -1;
+            public int OrdOcrText = -1;
+            public int OrdColor = -1;
+            public int OrdIsPinned = -1;
+            public int OrdIsPopped = -1;
+            public int OrdX = -1;
+            public int OrdY = -1;
+            public int OrdW = -1;
+            public int OrdH = -1;
+            public int OrdCanvasX = -1;
+            public int OrdCanvasY = -1;
+            public int OrdCategory = -1;
+            public int OrdIsFavorite = -1;
+            public int OrdIsTemplate = -1;
+            public int OrdIsSecure = -1;
+            public int OrdClassification = -1;
+            public int OrdCreatedAt = -1;
+            public int OrdUpdatedAt = -1;
+
+            public NoteRowReader(SqliteDataReader reader)
+            {
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    string name = reader.GetName(i);
+                    if (string.Equals(name, "id", StringComparison.OrdinalIgnoreCase)) OrdId = i;
+                    else if (string.Equals(name, "title", StringComparison.OrdinalIgnoreCase)) OrdTitle = i;
+                    else if (string.Equals(name, "content", StringComparison.OrdinalIgnoreCase)) OrdContent = i;
+                    else if (string.Equals(name, "plain_text", StringComparison.OrdinalIgnoreCase)) OrdPlainText = i;
+                    else if (string.Equals(name, "image_path", StringComparison.OrdinalIgnoreCase)) OrdImagePath = i;
+                    else if (string.Equals(name, "ocr_text", StringComparison.OrdinalIgnoreCase)) OrdOcrText = i;
+                    else if (string.Equals(name, "color", StringComparison.OrdinalIgnoreCase)) OrdColor = i;
+                    else if (string.Equals(name, "is_pinned_desktop", StringComparison.OrdinalIgnoreCase)) OrdIsPinned = i;
+                    else if (string.Equals(name, "is_popped_out", StringComparison.OrdinalIgnoreCase)) OrdIsPopped = i;
+                    else if (string.Equals(name, "x", StringComparison.OrdinalIgnoreCase)) OrdX = i;
+                    else if (string.Equals(name, "y", StringComparison.OrdinalIgnoreCase)) OrdY = i;
+                    else if (string.Equals(name, "w", StringComparison.OrdinalIgnoreCase)) OrdW = i;
+                    else if (string.Equals(name, "h", StringComparison.OrdinalIgnoreCase)) OrdH = i;
+                    else if (string.Equals(name, "canvas_x", StringComparison.OrdinalIgnoreCase)) OrdCanvasX = i;
+                    else if (string.Equals(name, "canvas_y", StringComparison.OrdinalIgnoreCase)) OrdCanvasY = i;
+                    else if (string.Equals(name, "category", StringComparison.OrdinalIgnoreCase)) OrdCategory = i;
+                    else if (string.Equals(name, "is_favorite", StringComparison.OrdinalIgnoreCase)) OrdIsFavorite = i;
+                    else if (string.Equals(name, "is_template", StringComparison.OrdinalIgnoreCase)) OrdIsTemplate = i;
+                    else if (string.Equals(name, "is_secure", StringComparison.OrdinalIgnoreCase)) OrdIsSecure = i;
+                    else if (string.Equals(name, "classification", StringComparison.OrdinalIgnoreCase)) OrdClassification = i;
+                    else if (string.Equals(name, "created_at", StringComparison.OrdinalIgnoreCase)) OrdCreatedAt = i;
+                    else if (string.Equals(name, "updated_at", StringComparison.OrdinalIgnoreCase)) OrdUpdatedAt = i;
+                }
+            }
+
+            public Note Read(SqliteDataReader reader)
+            {
+                return new Note
+                {
+                    Id = OrdId >= 0 ? reader.GetInt32(OrdId) : 0,
+                    Title = OrdTitle >= 0 && !reader.IsDBNull(OrdTitle) ? reader.GetString(OrdTitle) : "",
+                    Content = OrdContent >= 0 && !reader.IsDBNull(OrdContent) ? reader.GetString(OrdContent) : "",
+                    PlainText = OrdPlainText >= 0 && !reader.IsDBNull(OrdPlainText) ? reader.GetString(OrdPlainText) : "",
+                    ImagePath = OrdImagePath >= 0 && !reader.IsDBNull(OrdImagePath) ? reader.GetString(OrdImagePath) : null,
+                    OcrText = OrdOcrText >= 0 && !reader.IsDBNull(OrdOcrText) ? reader.GetString(OrdOcrText) : null,
+                    Color = OrdColor >= 0 && !reader.IsDBNull(OrdColor) ? reader.GetString(OrdColor) : "yellow",
+                    IsPinnedDesktop = OrdIsPinned >= 0 && !reader.IsDBNull(OrdIsPinned) && reader.GetInt32(OrdIsPinned) == 1,
+                    IsPoppedOut = OrdIsPopped >= 0 && !reader.IsDBNull(OrdIsPopped) && reader.GetInt32(OrdIsPopped) == 1,
+                    X = OrdX >= 0 && !reader.IsDBNull(OrdX) ? reader.GetInt32(OrdX) : null,
+                    Y = OrdY >= 0 && !reader.IsDBNull(OrdY) ? reader.GetInt32(OrdY) : null,
+                    W = OrdW >= 0 && !reader.IsDBNull(OrdW) ? reader.GetInt32(OrdW) : null,
+                    H = OrdH >= 0 && !reader.IsDBNull(OrdH) ? reader.GetInt32(OrdH) : null,
+                    CanvasX = OrdCanvasX >= 0 && !reader.IsDBNull(OrdCanvasX) ? Convert.ToDouble(reader.GetValue(OrdCanvasX)) : 50,
+                    CanvasY = OrdCanvasY >= 0 && !reader.IsDBNull(OrdCanvasY) ? Convert.ToDouble(reader.GetValue(OrdCanvasY)) : 50,
+                    Category = OrdCategory >= 0 && !reader.IsDBNull(OrdCategory) ? reader.GetString(OrdCategory) : "General",
+                    IsFavorite = OrdIsFavorite >= 0 && !reader.IsDBNull(OrdIsFavorite) && reader.GetInt32(OrdIsFavorite) == 1,
+                    IsTemplate = OrdIsTemplate >= 0 && !reader.IsDBNull(OrdIsTemplate) && reader.GetInt32(OrdIsTemplate) == 1,
+                    IsSecure = OrdIsSecure >= 0 && !reader.IsDBNull(OrdIsSecure) && reader.GetInt32(OrdIsSecure) == 1,
+                    Classification = OrdClassification >= 0 && !reader.IsDBNull(OrdClassification) ? reader.GetString(OrdClassification) : null,
+                    CreatedAt = OrdCreatedAt >= 0 && !reader.IsDBNull(OrdCreatedAt) && DateTime.TryParse(reader.GetString(OrdCreatedAt), out var cat) ? cat : DateTime.MinValue,
+                    UpdatedAt = OrdUpdatedAt >= 0 && !reader.IsDBNull(OrdUpdatedAt) && DateTime.TryParse(reader.GetString(OrdUpdatedAt), out var uat) ? uat : DateTime.MinValue
+                };
+            }
+        }
+
         private static Note ReadNote(SqliteDataReader reader)
         {
-            return new Note
-            {
-                Id = reader.GetInt32(reader.GetOrdinal("id")),
-                Title = reader.IsDBNull(reader.GetOrdinal("title")) ? "" : reader.GetString(reader.GetOrdinal("title")),
-                Content = reader.IsDBNull(reader.GetOrdinal("content")) ? "" : reader.GetString(reader.GetOrdinal("content")),
-                PlainText = GetStringSafe(reader, "plain_text", ""),
-                ImagePath = reader.IsDBNull(reader.GetOrdinal("image_path")) ? null : reader.GetString(reader.GetOrdinal("image_path")),
-                OcrText = reader.IsDBNull(reader.GetOrdinal("ocr_text")) ? null : reader.GetString(reader.GetOrdinal("ocr_text")),
-                Color = reader.IsDBNull(reader.GetOrdinal("color")) ? "yellow" : reader.GetString(reader.GetOrdinal("color")),
-                IsPinnedDesktop = reader.GetInt32(reader.GetOrdinal("is_pinned_desktop")) == 1,
-                IsPoppedOut = reader.GetInt32(reader.GetOrdinal("is_popped_out")) == 1,
-                X = reader.IsDBNull(reader.GetOrdinal("x")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("x")),
-                Y = reader.IsDBNull(reader.GetOrdinal("y")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("y")),
-                W = reader.IsDBNull(reader.GetOrdinal("w")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("w")),
-                H = reader.IsDBNull(reader.GetOrdinal("h")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("h")),
-                CanvasX = GetDoubleSafe(reader, "canvas_x"),
-                CanvasY = GetDoubleSafe(reader, "canvas_y"),
-                Category = GetStringSafe(reader, "category"),
-                IsFavorite = GetBoolSafe(reader, "is_favorite"),
-                IsTemplate = GetBoolSafe(reader, "is_template"),
-                IsSecure = GetBoolSafe(reader, "is_secure"),
-                CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("created_at"))),
-                UpdatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("updated_at")))
-            };
-        }
-
-        private static string GetStringSafe(SqliteDataReader reader, string columnName, string defaultValue = "General")
-        {
-            try
-            {
-                int idx = reader.GetOrdinal(columnName);
-                return reader.IsDBNull(idx) ? defaultValue : reader.GetString(idx);
-            }
-            catch
-            {
-                return defaultValue;
-            }
-        }
-
-        private static double GetDoubleSafe(SqliteDataReader reader, string columnName, double defaultValue = 50)
-        {
-            try
-            {
-                int idx = reader.GetOrdinal(columnName);
-                return reader.IsDBNull(idx) ? defaultValue : Convert.ToDouble(reader.GetValue(idx));
-            }
-            catch
-            {
-                return defaultValue;
-            }
-        }
-
-        private static bool GetBoolSafe(SqliteDataReader reader, string columnName, bool defaultValue = false)
-        {
-            try
-            {
-                int idx = reader.GetOrdinal(columnName);
-                return reader.IsDBNull(idx) ? defaultValue : Convert.ToInt32(reader.GetValue(idx)) == 1;
-            }
-            catch
-            {
-                return defaultValue;
-            }
+            return new NoteRowReader(reader).Read(reader);
         }
 
         public static void SetFavorite(int noteId, bool isFavorite)
@@ -1445,8 +1726,6 @@ namespace StickyNotes__
             }
         }
 
-        // --- JeffsNotes sync map ---
-
         public static void UpsertSyncMap(int localNoteId, string remoteId, string signature, string? remoteUpdatedAt)
         {
             using (var conn = new SqliteConnection(GetConnectionString()))
@@ -1510,8 +1789,6 @@ namespace StickyNotes__
             return map;
         }
 
-        // sync_map rows whose local note has been deleted -- these represent local deletions
-        // that still need to be propagated to the remote (JeffsNotes) server.
         public static List<SyncMapEntry> GetOrphanedSyncMapEntries()
         {
             var list = new List<SyncMapEntry>();

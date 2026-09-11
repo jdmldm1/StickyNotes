@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
@@ -109,7 +109,7 @@ namespace StickyNotes__
                 return new List<string>();
 
             string prompt = $"Analyze the following text and generate 3 to 5 simple, lowercase tags representing the topics. Return ONLY a plain JSON string array of tags, for example: [\"database\", \"sql\", \"fix\"]. Do not write any explanations, markdown blocks, or other text. If the text has no clear topics, return an empty array.\n\nText: {text}";
-            
+
             string response = await GenerateTextAsync(prompt);
             return ParseJsonStringArray(response);
         }

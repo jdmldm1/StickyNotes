@@ -1,0 +1,82 @@
+<Window x:Class="StickyNotes__.EdgeHandleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="StickyNotes Handle"
+        Width="38" Height="110"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        ShowActivated="False"
+        SourceInitialized="Window_SourceInitialized">
+    
+    <Grid Background="Transparent">
+        <Border x:Name="HandleBorder"
+                Width="32" Height="104"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Background="#E818181C"
+                BorderBrush="#38FFFFFF"
+                BorderThickness="1.5,1.5,0,1.5"
+                CornerRadius="16,0,0,16"
+                Cursor="Hand"
+                ToolTip="StickyNotes&#x0a;• Click to open&#x0a;• Drag up/down to reposition"
+                PreviewMouseLeftButtonDown="Handle_PreviewMouseLeftButtonDown"
+                PreviewMouseMove="Handle_PreviewMouseMove"
+                PreviewMouseLeftButtonUp="Handle_PreviewMouseLeftButtonUp"
+                ContextMenuOpening="Handle_ContextMenuOpening"
+                MouseEnter="HandleBorder_MouseEnter"
+                MouseLeave="HandleBorder_MouseLeave">
+            <Border.Effect>
+                <DropShadowEffect x:Name="HandleShadow"
+                                  BlurRadius="10"
+                                  ShadowDepth="2"
+                                  Direction="180"
+                                  Color="Black"
+                                  Opacity="0.45"/>
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="HandleTranslate" X="0" Y="0"/>
+            </Border.RenderTransform>
+
+            <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Top Grip Dots -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,6">
+                    <Ellipse Width="3" Height="3" Fill="#66FFFFFF" Margin="1,0"/>
+                    <Ellipse Width="3" Height="3" Fill="#66FFFFFF" Margin="1,0"/>
+                    <Ellipse Width="3" Height="3" Fill="#66FFFFFF" Margin="1,0"/>
+                </StackPanel>
+
+                <!-- Chevron pointing left (indicates expanding towards left) -->
+                <TextBlock Grid.Row="1" x:Name="ChevronText" Text="◀"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           Foreground="#0084ff"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,5"/>
+
+                <!-- Sticky Note Icon -->
+                <TextBlock Grid.Row="2" Text="📝"
+                           FontSize="13"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,6"/>
+
+                <!-- Bottom Grip Dots -->
+                <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,2">
+                    <Ellipse Width="3" Height="3" Fill="#66FFFFFF" Margin="1,0"/>
+                    <Ellipse Width="3" Height="3" Fill="#66FFFFFF" Margin="1,0"/>
+                    <Ellipse Width="3" Height="3" Fill="#66FFFFFF" Margin="1,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

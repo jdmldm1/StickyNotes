@@ -19,12 +19,34 @@
             <!-- Title Bar -->
             <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="🕸  Tag Mind Graph" Foreground="#ffffff" FontSize="14"
-                           FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                <TextBlock Grid.Column="0" Text="🕸  Knowledge Graph" Foreground="#ffffff" FontSize="14"
+                           FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,16,0"/>
+
+                <!-- Search Box -->
+                <Border Grid.Column="1" Background="#202026" BorderBrush="#33333f" BorderThickness="1" CornerRadius="6"
+                        Height="26" MaxWidth="320" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="SearchGraphBox" Background="Transparent" Foreground="#ffffff" BorderThickness="0"
+                                 Padding="8,2" FontSize="11" VerticalContentAlignment="Center" CaretBrush="White"
+                                 TextChanged="SearchGraphBox_TextChanged" KeyDown="SearchGraphBox_KeyDown"/>
+                        <TextBlock x:Name="SearchPlaceholderText" Text="🔍 Search notes or #tags..." Foreground="#71717a" FontSize="10.5"
+                                   Padding="8,4" IsHitTestVisible="False" VerticalAlignment="Center"/>
+                        <Button x:Name="ClearSearchBtn" Grid.Column="1" Content="✕" Click="ClearSearch_Click"
+                                Background="Transparent" BorderThickness="0" Foreground="#a1a1aa" FontSize="10"
+                                Width="22" Cursor="Hand" Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+
+                <!-- Window Buttons -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
                     <Button Content="—" Click="MinimizeButton_Click" ToolTip="Minimize"
                             Width="30" Height="26" Background="Transparent" BorderThickness="0"
                             Foreground="#ffffff" FontSize="11" Cursor="Hand"/>
@@ -48,10 +70,16 @@
                     <StackPanel x:Name="TagLegendPanel" Orientation="Horizontal"/>
                 </ScrollViewer>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,6,12,6" VerticalAlignment="Center">
+                    <CheckBox x:Name="ShowWikilinksCheck" Content="Wikilinks" IsChecked="True"
+                              Foreground="#38bdf8" FontSize="11" Margin="0,0,10,0" VerticalAlignment="Center"
+                              Checked="Filter_Changed" Unchecked="Filter_Changed" ToolTip="Show/hide direct [[Note]] connections"/>
+                    <CheckBox x:Name="ShowTagsCheck" Content="Tags" IsChecked="True"
+                              Foreground="#c084fc" FontSize="11" Margin="0,0,12,0" VerticalAlignment="Center"
+                              Checked="Filter_Changed" Unchecked="Filter_Changed" ToolTip="Show/hide shared tag connections"/>
                     <CheckBox x:Name="ShowLabelsCheck" Content="Labels" IsChecked="True"
-                              Foreground="#aaaaaa" FontSize="11" Margin="0,0,10,0"
+                              Foreground="#aaaaaa" FontSize="11" Margin="0,0,12,0" VerticalAlignment="Center"
                               Checked="ShowLabels_Changed" Unchecked="ShowLabels_Changed"/>
-                    <Button Content="↺ Reset" Click="ResetLayout_Click"
+                    <Button Content="↺ Reset" Click="ResetLayout_Click" ToolTip="Reset zoom, pan and re-arrange layout"
                             Padding="8,3" Background="#20ffffff" Foreground="#cccccc"
                             BorderThickness="0" FontSize="11" Cursor="Hand">
                         <Button.Resources>

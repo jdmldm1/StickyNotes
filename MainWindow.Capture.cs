@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -52,10 +52,10 @@ namespace StickyNotes__
                     await System.Threading.Tasks.Task.Delay(150);
 
                     int noteId = DatabaseHelper.CreateNote(
-                        "Screenshot note", 
-                        "", 
-                        imagePath, 
-                        "", 
+                        "Screenshot note",
+                        "",
+                        imagePath,
+                        "",
                         "yellow"
                     );
 
