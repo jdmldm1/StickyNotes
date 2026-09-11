@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -75,7 +75,7 @@ namespace StickyNotes__
                 {
                     if (_isAppBarRegistered && Visibility == Visibility.Visible && !_isAnimating)
                     {
-                        SetAppBarPosition(350);
+                        SetAppBarPosition((int)SidebarWidth);
                         handled = true;
                     }
                 }
@@ -176,7 +176,7 @@ namespace StickyNotes__
             Win32Helper.SHAppBarMessage(Win32Helper.ABM_NEW, ref _appBarData);
             _isAppBarRegistered = true;
 
-            SetAppBarPosition(350);
+            SetAppBarPosition((int)SidebarWidth);
         }
         private void UnregisterAppBar()
         {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Packaging;
@@ -92,6 +92,12 @@ namespace StickyNotes__
             ApplyColor();
             _isLoaded = true;
         }
+        public void ReloadFromDatabase()
+        {
+            _note = DatabaseHelper.GetNote(_noteId) ?? _note;
+            LoadNoteData();
+        }
+
         private void LoadNoteData()
         {
             if (_note == null) return;

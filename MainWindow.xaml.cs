@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -40,10 +40,27 @@ namespace StickyNotes__
         }
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            RefreshNotesList();
+            if (SettingsService.Current.SidebarWidth >= 260 && SettingsService.Current.SidebarWidth <= 800)
+            {
+                ApplySidebarWidth(SettingsService.Current.SidebarWidth);
+            }
+
+            string savedCardSize = string.IsNullOrEmpty(SettingsService.Current.CardSize) ? "Medium" : SettingsService.Current.CardSize;
+            SetCardSize(savedCardSize);
+
             RefreshTagsFilter();
             LoadSavedOpacity();
             CheckStaleNotes();
+
+            _recentNoteIds = SettingsService.Current.RecentNoteIds ?? new List<int>();
+            RenderRecentNotes();
+            RenderSavedPresets();
+            RenderCategoryJumpRail();
+            if (SettingsService.Current.ShowHeatmap)
+            {
+                HeatmapContainer.Visibility = Visibility.Visible;
+                RenderActivityHeatmap();
+            }
 
             if (SettingsService.Current.StartCollapsed)
             {

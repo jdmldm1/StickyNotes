@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -234,6 +234,7 @@ namespace StickyNotes__
         }
         public NoteWindow OpenNoteWindow(int noteId)
         {
+            RecordRecentNote(noteId);
             if (_openNoteWindows.TryGetValue(noteId, out NoteWindow? openWindow))
             {
                 openWindow.Activate();

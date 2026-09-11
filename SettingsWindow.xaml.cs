@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -36,6 +36,27 @@ namespace StickyNotes__
         public bool AutoCollapse { get; set; } = false;
         public bool HoverToPeek { get; set; } = true;
         public double HandleVerticalPosition { get; set; } = 0.5;
+        public double SidebarWidth { get; set; } = 350;
+        public string CardSize { get; set; } = "Medium";
+        public List<int> RecentNoteIds { get; set; } = new List<int>();
+        public List<SavedViewPreset> SavedViews { get; set; } = new List<SavedViewPreset>();
+        public bool ShowHeatmap { get; set; } = false;
+        public bool ShowRecentBar { get; set; } = true;
+    }
+
+    public class SavedViewPreset
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
+        public string Name { get; set; } = "";
+        public string? SearchText { get; set; }
+        public string? Category { get; set; }
+        public string? Tag { get; set; }
+        public string? Color { get; set; }
+        public bool FavoritesOnly { get; set; }
+        public bool TasksOnly { get; set; }
+        public bool FilesOnly { get; set; }
+        public string SortOrder { get; set; } = "date";
+        public string CardSize { get; set; } = "Medium";
     }
 
     public partial class SettingsWindow : Window

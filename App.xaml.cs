@@ -1,5 +1,6 @@
-﻿using System.Configuration;
+using System.Configuration;
 using System.Data;
+using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 
@@ -17,6 +18,15 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
+        {
+            Debug.WriteLine($"Unhandled exception: {ev.ExceptionObject}");
+        };
+        DispatcherUnhandledException += (s, ev) =>
+        {
+            Debug.WriteLine($"Dispatcher exception: {ev.Exception}");
+        };
+
         try
         {
             _singleInstanceMutex = new Mutex(true, "StickyNotesPlusPlus_SingleInstance_Mutex", out bool createdNew);

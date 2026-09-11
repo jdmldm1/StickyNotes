@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 
@@ -23,6 +23,8 @@ namespace StickyNotes__
         }
 
         public static void Invalidate() => _cache = null;
+
+        public static void Save() => Save(Current);
 
         public static void Save(AppConfigData config)
         {

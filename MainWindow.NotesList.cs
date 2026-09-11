@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -23,6 +23,14 @@ namespace StickyNotes__
     public partial class MainWindow : Window
     {
         private string? _selectedTagFilter;
+        private DateTime? _filterExactDate;
+        private readonly HashSet<string> _selectedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private bool _tagMatrixModeAll;
+        private List<int> _recentNoteIds = new List<int>();
+        private bool _filterFavoritesOnly;
+        private bool _filterHasTasksOnly;
+        private bool _filterHasFilesOnly;
+        private string? _filterColor;
         private string _sortOrder = "date";
         private string _cardSize = "Medium";
         private DispatcherTimer? _searchDebounceTimer;
@@ -67,6 +75,11 @@ namespace StickyNotes__
 
         private static readonly Brush FavoriteGroupBrush = NoteCardViewModel.FrozenBrush(255, 0xff, 0xc1, 0x07);
         private static readonly Brush NotesGroupBrush = NoteCardViewModel.FrozenBrush(255, 0x00, 0x84, 0xff);
+        private static readonly Brush TodayBrush = NoteCardViewModel.FrozenBrush(255, 0x00, 0xd2, 0xff);
+        private static readonly Brush YesterdayBrush = NoteCardViewModel.FrozenBrush(255, 0x4f, 0xc3, 0xf7);
+        private static readonly Brush WeekBrush = NoteCardViewModel.FrozenBrush(255, 0x26, 0xa6, 0x9a);
+        private static readonly Brush MonthBrush = NoteCardViewModel.FrozenBrush(255, 0xab, 0x47, 0xbc);
+        private static readonly Brush OlderBrush = NoteCardViewModel.FrozenBrush(255, 0x90, 0xa4, 0xae);
         private static readonly string[] CategoryColors = { "#D49A13", "#1A8F54", "#C2185B", "#7B1FA2", "#0288D1", "#e65100" };
         private static readonly Dictionary<string, Brush> _categoryBrushCache = new Dictionary<string, Brush>(StringComparer.OrdinalIgnoreCase);
 
@@ -177,21 +190,118 @@ namespace StickyNotes__
             }
             _isNotesListDirty = false;
 
-            string searchQuery = SearchTextBox.Text.Trim();
+            string rawSearch = SearchTextBox?.Text?.Trim() ?? "";
+            string effectiveSearch = rawSearch;
+            string? syntaxTag = null;
+            string? syntaxCategory = null;
+            string? syntaxColor = null;
+            bool syntaxTasks = false;
+            bool syntaxFavorites = false;
+            bool syntaxFiles = false;
+
+            if (!string.IsNullOrEmpty(rawSearch))
+            {
+                var tokens = rawSearch.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var remainingTokens = new List<string>();
+                foreach (var token in tokens)
+                {
+                    if (token.StartsWith("#") && token.Length > 1)
+                    {
+                        syntaxTag = token.Substring(1);
+                    }
+                    else if (token.StartsWith("tag:", StringComparison.OrdinalIgnoreCase) && token.Length > 4)
+                    {
+                        syntaxTag = token.Substring(4);
+                    }
+                    else if (token.StartsWith("cat:", StringComparison.OrdinalIgnoreCase) && token.Length > 4)
+                    {
+                        syntaxCategory = token.Substring(4);
+                    }
+                    else if (token.StartsWith("color:", StringComparison.OrdinalIgnoreCase) && token.Length > 6)
+                    {
+                        syntaxColor = token.Substring(6);
+                    }
+                    else if (token.Equals("is:todo", StringComparison.OrdinalIgnoreCase) || token.Equals("has:task", StringComparison.OrdinalIgnoreCase) || token.Equals("is:task", StringComparison.OrdinalIgnoreCase))
+                    {
+                        syntaxTasks = true;
+                    }
+                    else if (token.Equals("is:fav", StringComparison.OrdinalIgnoreCase) || token.Equals("is:pinned", StringComparison.OrdinalIgnoreCase))
+                    {
+                        syntaxFavorites = true;
+                    }
+                    else if (token.Equals("is:file", StringComparison.OrdinalIgnoreCase) || token.Equals("has:file", StringComparison.OrdinalIgnoreCase) || token.Equals("has:link", StringComparison.OrdinalIgnoreCase))
+                    {
+                        syntaxFiles = true;
+                    }
+                    else
+                    {
+                        remainingTokens.Add(token);
+                    }
+                }
+                effectiveSearch = string.Join(" ", remainingTokens);
+            }
+
+            string? activeTag = syntaxTag ?? _selectedTagFilter;
+            string? activeColor = syntaxColor ?? _filterColor;
+            bool activeFavorites = syntaxFavorites || _filterFavoritesOnly;
+            bool activeTasks = syntaxTasks || _filterHasTasksOnly;
+            bool activeFiles = syntaxFiles || _filterHasFilesOnly;
+
             var notes = DatabaseHelper.ListNotes(
-                string.IsNullOrEmpty(searchQuery) ? null : searchQuery,
-                _selectedTagFilter
+                string.IsNullOrEmpty(effectiveSearch) ? null : effectiveSearch,
+                activeTag,
+                syntaxCategory
             );
+
+            var attachmentsMap = DatabaseHelper.GetAllNoteAttachmentsMap();
+
+            if (activeFavorites)
+            {
+                notes = notes.Where(n => n.IsFavorite).ToList();
+            }
+
+            if (!string.IsNullOrEmpty(activeColor))
+            {
+                notes = notes.Where(n => string.Equals(n.Color, activeColor, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (activeTasks)
+            {
+                notes = notes.Where(n => n.PlainText.Contains("- [ ]") || n.PlainText.Contains("- [x]") || n.PlainText.Contains("- [X]")).ToList();
+            }
+
+            if (activeFiles)
+            {
+                notes = notes.Where(n => (attachmentsMap.TryGetValue(n.Id, out var atts) && atts.Count > 0) ||
+                                         n.PlainText.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
+                                         n.PlainText.Contains("https://", StringComparison.OrdinalIgnoreCase)).ToList();
+            }
 
             if (_showOnlyStale)
             {
                 notes = notes.Where(IsStaleNote).ToList();
             }
 
-            var sortedNotes = notes.OrderByDescending(n => n.IsFavorite).ThenByDescending(n => n.UpdatedAt).ToList();
+            if (_filterExactDate.HasValue)
+            {
+                notes = notes.Where(n => n.UpdatedAt.Date == _filterExactDate.Value.Date).ToList();
+            }
 
             var tagsMap = DatabaseHelper.GetAllNoteTagsMap();
-            var attachmentsMap = DatabaseHelper.GetAllNoteAttachmentsMap();
+
+            if (_selectedTags.Count > 0)
+            {
+                if (_tagMatrixModeAll)
+                {
+                    notes = notes.Where(n => tagsMap.TryGetValue(n.Id, out var nt) && _selectedTags.All(st => nt.Contains(st, StringComparer.OrdinalIgnoreCase))).ToList();
+                }
+                else
+                {
+                    notes = notes.Where(n => tagsMap.TryGetValue(n.Id, out var nt) && _selectedTags.Any(st => nt.Contains(st, StringComparer.OrdinalIgnoreCase))).ToList();
+                }
+            }
+
+            var sortedNotes = notes.OrderByDescending(n => n.IsFavorite).ThenByDescending(n => n.UpdatedAt).ToList();
 
             var viewModels = sortedNotes.Select(n =>
             {
@@ -218,6 +328,55 @@ namespace StickyNotes__
                 vm.InitComputedProperties();
                 return vm;
             }).ToList();
+
+            if (ClearSearchButton != null)
+            {
+                ClearSearchButton.Visibility = string.IsNullOrEmpty(rawSearch) ? Visibility.Collapsed : Visibility.Visible;
+            }
+
+            if (_cardSize == "Tasks")
+            {
+                var allTasks = new List<GlobalTaskItemViewModel>();
+                foreach (var vm in viewModels)
+                {
+                    allTasks.AddRange(ExtractTasksFromNote(vm));
+                }
+
+                var openTasks = allTasks.Where(t => !t.IsCompleted).ToList();
+                var doneTasks = allTasks.Where(t => t.IsCompleted).ToList();
+
+                if (ResultCountTextBlock != null)
+                {
+                    ResultCountTextBlock.Text = $"{openTasks.Count} open, {doneTasks.Count} done";
+                }
+
+                var taskRows = new List<object>();
+                var todoBrush = NoteCardViewModel.FrozenBrush(255, 0x00, 0xd2, 0xff);
+                var doneBrush = NoteCardViewModel.FrozenBrush(255, 0x26, 0xa6, 0x9a);
+
+                if (openTasks.Count > 0)
+                    taskRows.AddRange(BuildTaskGroupRows("📋 To Do", todoBrush, openTasks, "__tasks_todo__"));
+                if (doneTasks.Count > 0)
+                    taskRows.AddRange(BuildTaskGroupRows("✓ Completed", doneBrush, doneTasks, "__tasks_completed__"));
+
+                NotesListBox.ItemsSource = taskRows;
+                UpdateExpandCollapseAllButtonLabel();
+                return;
+            }
+
+            if (ResultCountTextBlock != null)
+            {
+                bool isFilterActive = !string.IsNullOrEmpty(rawSearch) || activeFavorites || activeTasks || activeFiles || !string.IsNullOrEmpty(activeColor) || !string.IsNullOrEmpty(activeTag) || _showOnlyStale || _filterExactDate.HasValue || _selectedTags.Count > 0;
+                if (isFilterActive)
+                {
+                    int totalCount = DatabaseHelper.GetNoteCount();
+                    ResultCountTextBlock.Text = $"{viewModels.Count} of {totalCount}";
+                }
+                else
+                {
+                    ResultCountTextBlock.Text = $"{viewModels.Count} note{(viewModels.Count == 1 ? "" : "s")}";
+                }
+            }
 
             var favoriteBrush = FavoriteGroupBrush;
             var notesBrush = NotesGroupBrush;
@@ -262,13 +421,30 @@ namespace StickyNotes__
 
                 if (favorites.Count > 0)
                 {
-                    rows.AddRange(BuildGroupRows("★ Favorites", favoriteBrush, favorites, "__favorites__"));
+                    rows.AddRange(BuildGroupRows("★ Pinned", favoriteBrush, favorites, "__favorites__"));
                 }
 
-                rows.AddRange(BuildGroupRows("Notes", notesBrush, rest, "__notes__"));
+                var today = DateTime.Today;
+                var todayItems = rest.Where(vm => vm.UpdatedAt.Date >= today).ToList();
+                var yesterdayItems = rest.Where(vm => vm.UpdatedAt.Date == today.AddDays(-1)).ToList();
+                var weekItems = rest.Where(vm => vm.UpdatedAt.Date >= today.AddDays(-7) && vm.UpdatedAt.Date < today.AddDays(-1)).ToList();
+                var monthItems = rest.Where(vm => vm.UpdatedAt.Date >= today.AddDays(-30) && vm.UpdatedAt.Date < today.AddDays(-7)).ToList();
+                var olderItems = rest.Where(vm => vm.UpdatedAt.Date < today.AddDays(-30)).ToList();
+
+                if (todayItems.Count > 0)
+                    rows.AddRange(BuildGroupRows("☀️ Today", TodayBrush, todayItems, "__timeline_today__"));
+                if (yesterdayItems.Count > 0)
+                    rows.AddRange(BuildGroupRows("📅 Yesterday", YesterdayBrush, yesterdayItems, "__timeline_yesterday__"));
+                if (weekItems.Count > 0)
+                    rows.AddRange(BuildGroupRows("🗓 Last 7 Days", WeekBrush, weekItems, "__timeline_week__"));
+                if (monthItems.Count > 0)
+                    rows.AddRange(BuildGroupRows("🗓 Earlier this Month", MonthBrush, monthItems, "__timeline_month__"));
+                if (olderItems.Count > 0)
+                    rows.AddRange(BuildGroupRows("🗄 Older", OlderBrush, olderItems, "__timeline_older__"));
             }
 
             NotesListBox.ItemsSource = rows;
+            UpdateExpandCollapseAllButtonLabel();
         }
 
         private List<object> BuildGroupRows(string headerTitle, Brush accentBrush, List<NoteCardViewModel> items,
@@ -400,42 +576,220 @@ namespace StickyNotes__
         }
         public void RefreshTagsFilter()
         {
-            TagsFilterPanel.Children.Clear();
+            UpdateFilterChipStyles();
+        }
 
-            TagsFilterPanel.Children.Add(BuildFilterPill("All", string.IsNullOrEmpty(_selectedTagFilter), () =>
+        private void ClearSearchButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (SearchTextBox != null)
             {
-                _selectedTagFilter = null;
-                _showOnlyStale = false;
-                RefreshTagsFilter();
-                RefreshNotesList();
-            }));
-
-            var tags = DatabaseHelper.ListAllTags();
-            foreach (var tag in tags)
-            {
-                string currentTag = tag;
-                TagsFilterPanel.Children.Add(BuildFilterPill($"#{tag}", _selectedTagFilter == tag, () =>
-                {
-                    _selectedTagFilter = currentTag;
-                    _showOnlyStale = false;
-                    RefreshTagsFilter();
-                    RefreshNotesList();
-                }));
+                SearchTextBox.Text = "";
+                SearchTextBox.Focus();
             }
         }
-        private static Border BuildFilterPill(string label, bool isSelected, Action onClick)
+
+        private void FilterAllButton_Click(object sender, RoutedEventArgs e)
         {
-            var border = new Border
+            _selectedTagFilter = null;
+            _selectedTags.Clear();
+            _filterExactDate = null;
+            if (HeatmapFilterPill != null) HeatmapFilterPill.Visibility = Visibility.Collapsed;
+            _filterColor = null;
+            _filterFavoritesOnly = false;
+            _filterHasTasksOnly = false;
+            _filterHasFilesOnly = false;
+            _showOnlyStale = false;
+            if (SearchTextBox != null) SearchTextBox.Text = "";
+            UpdateFilterChipStyles();
+            RefreshNotesList();
+        }
+
+        private void FilterFavoritesButton_Click(object sender, RoutedEventArgs e)
+        {
+            _filterFavoritesOnly = !_filterFavoritesOnly;
+            UpdateFilterChipStyles();
+            RefreshNotesList();
+        }
+
+        private void FilterTasksButton_Click(object sender, RoutedEventArgs e)
+        {
+            _filterHasTasksOnly = !_filterHasTasksOnly;
+            UpdateFilterChipStyles();
+            RefreshNotesList();
+        }
+
+        private void FilterFilesButton_Click(object sender, RoutedEventArgs e)
+        {
+            _filterHasFilesOnly = !_filterHasFilesOnly;
+            UpdateFilterChipStyles();
+            RefreshNotesList();
+        }
+
+        private void FilterColorButton_Click(object sender, RoutedEventArgs e)
+        {
+            var menu = new ContextMenu();
+
+            var allItem = new MenuItem
             {
-                Margin = new Thickness(0, 0, 6, 0),
-                Padding = new Thickness(12, 4, 12, 4),
-                CornerRadius = new CornerRadius(11),
-                Background = isSelected ? new SolidColorBrush(Color.FromRgb(0, 132, 255)) : new SolidColorBrush(Color.FromRgb(26, 26, 26)),
-                Cursor = Cursors.Hand
+                Header = "All Colors",
+                IsChecked = string.IsNullOrEmpty(_filterColor)
             };
-            border.Child = new TextBlock { Text = label, Foreground = Brushes.White, FontSize = 11 };
-            border.MouseLeftButtonUp += (s, e) => onClick();
-            return border;
+            allItem.Click += (s, args) =>
+            {
+                _filterColor = null;
+                UpdateFilterChipStyles();
+                RefreshNotesList();
+            };
+            menu.Items.Add(allItem);
+            menu.Items.Add(new Separator());
+
+            var colors = new[]
+            {
+                ("Yellow", "yellow", "#D49A13"),
+                ("Green", "green", "#1A8F54"),
+                ("Pink", "pink", "#C2185B"),
+                ("Purple", "purple", "#7B1FA2"),
+                ("Blue", "blue", "#0288D1"),
+                ("Charcoal", "charcoal", "#616161")
+            };
+
+            var converter = new BrushConverter();
+            foreach (var (name, key, hex) in colors)
+            {
+                var item = new MenuItem
+                {
+                    Header = name,
+                    IsChecked = string.Equals(_filterColor, key, StringComparison.OrdinalIgnoreCase)
+                };
+                item.Icon = new System.Windows.Shapes.Ellipse
+                {
+                    Width = 10,
+                    Height = 10,
+                    Fill = (Brush)converter.ConvertFromString(hex)!,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                };
+                string colorKey = key;
+                item.Click += (s, args) =>
+                {
+                    _filterColor = colorKey;
+                    UpdateFilterChipStyles();
+                    RefreshNotesList();
+                };
+                menu.Items.Add(item);
+            }
+
+            menu.PlacementTarget = FilterColorButton;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+
+        private void FilterTagsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (TagMatrixDrawer == null) return;
+            bool isVisible = TagMatrixDrawer.Visibility == Visibility.Visible;
+            TagMatrixDrawer.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+            if (!isVisible)
+            {
+                RenderTagMatrixPills();
+            }
+        }
+
+        private void UpdateFilterChipStyles()
+        {
+            if (FilterAllButton == null) return;
+
+            var activeBrush = new SolidColorBrush(Color.FromRgb(0, 132, 255));
+            var inactiveBrush = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255));
+            var activeFg = Brushes.White;
+            var inactiveFg = new SolidColorBrush(Color.FromRgb(170, 170, 170));
+
+            bool anyFilter = _filterFavoritesOnly || _filterHasTasksOnly || _filterHasFilesOnly ||
+                             !string.IsNullOrEmpty(_filterColor) || !string.IsNullOrEmpty(_selectedTagFilter) ||
+                             _selectedTags.Count > 0 || _filterExactDate.HasValue || _showOnlyStale;
+
+            FilterAllButton.Background = !anyFilter ? activeBrush : inactiveBrush;
+            FilterAllButton.Foreground = !anyFilter ? activeFg : inactiveFg;
+
+            if (FilterFavoritesButton != null)
+            {
+                FilterFavoritesButton.Background = _filterFavoritesOnly ? activeBrush : inactiveBrush;
+                FilterFavoritesButton.Foreground = _filterFavoritesOnly ? activeFg : inactiveFg;
+            }
+
+            if (FilterTasksButton != null)
+            {
+                FilterTasksButton.Background = _filterHasTasksOnly ? activeBrush : inactiveBrush;
+                FilterTasksButton.Foreground = _filterHasTasksOnly ? activeFg : inactiveFg;
+            }
+
+            if (FilterFilesButton != null)
+            {
+                FilterFilesButton.Background = _filterHasFilesOnly ? activeBrush : inactiveBrush;
+                FilterFilesButton.Foreground = _filterHasFilesOnly ? activeFg : inactiveFg;
+            }
+
+            if (FilterColorButton != null)
+            {
+                FilterColorButton.Background = !string.IsNullOrEmpty(_filterColor) ? activeBrush : inactiveBrush;
+                FilterColorButton.Foreground = !string.IsNullOrEmpty(_filterColor) ? activeFg : inactiveFg;
+                FilterColorButton.Content = string.IsNullOrEmpty(_filterColor) ? "🎨 Color ▾" : $"🎨 {_filterColor} ▾";
+            }
+
+            if (FilterTagsButton != null)
+            {
+                bool hasTags = _selectedTags.Count > 0 || !string.IsNullOrEmpty(_selectedTagFilter);
+                FilterTagsButton.Background = hasTags ? activeBrush : inactiveBrush;
+                FilterTagsButton.Foreground = hasTags ? activeFg : inactiveFg;
+                if (_selectedTags.Count > 0)
+                    FilterTagsButton.Content = $"🏷️ Tags ({_selectedTags.Count}) ▾";
+                else if (!string.IsNullOrEmpty(_selectedTagFilter))
+                    FilterTagsButton.Content = $"🏷️ #{_selectedTagFilter} ▾";
+                else
+                    FilterTagsButton.Content = "🏷️ Tags ▾";
+            }
+        }
+
+        private void GroupHeader_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent("StickyNoteCard") && sender is FrameworkElement fe && fe.DataContext is NoteGroupHeaderViewModel vm)
+            {
+                if (!vm.ExpanderKey.StartsWith("__"))
+                {
+                    e.Effects = DragDropEffects.Move;
+                    e.Handled = true;
+                    return;
+                }
+            }
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void GroupHeader_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent("StickyNoteCard") && sender is FrameworkElement fe && fe.DataContext is NoteGroupHeaderViewModel vm)
+            {
+                if (!vm.ExpanderKey.StartsWith("__"))
+                {
+                    if (e.Data.GetData("StickyNoteCard") is NoteCardViewModel noteVm)
+                    {
+                        string targetCategory = vm.ExpanderKey;
+                        var note = DatabaseHelper.GetNote(noteVm.Id);
+                        if (note != null && !string.Equals(note.Category, targetCategory, StringComparison.OrdinalIgnoreCase))
+                        {
+                            note.Category = targetCategory;
+                            DatabaseHelper.UpdateNote(note);
+                            if (_openNoteWindows.TryGetValue(note.Id, out var openWnd))
+                            {
+                                openWnd.UpdateCategory(targetCategory);
+                            }
+                            ShowStatusToast($"Moved note to \"{targetCategory}\"");
+                            RefreshNotesList();
+                        }
+                    }
+                    e.Handled = true;
+                }
+            }
         }
         private Point _dragStartPoint;
         private void NoteCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -660,24 +1014,41 @@ namespace StickyNotes__
             SortCategoryButton.Background = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255));
             SortCategoryButton.Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136));
 
-            ExpandCollapseAllButton.Visibility = Visibility.Collapsed;
+            ExpandCollapseAllButton.Visibility = Visibility.Visible;
+            UpdateExpandCollapseAllButtonLabel();
 
             RefreshNotesList();
         }
-        private List<string> GetCategoryGroupKeys()
+        private List<string> GetAllGroupKeys()
         {
-            var categories = DatabaseHelper.ListAllCategories();
-            return new List<string> { "__favorites__" }.Concat(categories).ToList();
+            if (_sortOrder == "date")
+            {
+                return new List<string>
+                {
+                    "__favorites__",
+                    "__timeline_today__",
+                    "__timeline_yesterday__",
+                    "__timeline_week__",
+                    "__timeline_month__",
+                    "__timeline_older__"
+                };
+            }
+            else
+            {
+                var categories = DatabaseHelper.ListAllCategories();
+                return new List<string> { "__favorites__" }.Concat(categories).ToList();
+            }
         }
 
         private void UpdateExpandCollapseAllButtonLabel()
         {
-            bool anyCollapsed = GetCategoryGroupKeys().Any(key => _expanderStates.TryGetValue(key, out var expanded) && !expanded);
+            var keys = GetAllGroupKeys();
+            bool anyCollapsed = keys.Any(key => _expanderStates.TryGetValue(key, out var expanded) && !expanded);
             ExpandCollapseAllButton.Content = anyCollapsed ? "Expand All" : "Collapse All";
         }
         private void ExpandCollapseAllButton_Click(object sender, RoutedEventArgs e)
         {
-            var groupKeys = GetCategoryGroupKeys();
+            var groupKeys = GetAllGroupKeys();
             bool anyCollapsed = groupKeys.Any(key => _expanderStates.TryGetValue(key, out var expanded) && !expanded);
 
             foreach (var key in groupKeys)
@@ -688,24 +1059,58 @@ namespace StickyNotes__
             RefreshNotesList();
             UpdateExpandCollapseAllButtonLabel();
         }
+        private void SizeListButton_Click(object sender, RoutedEventArgs e) => SetCardSize("List");
+        private void SizeTableButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Table");
         private void SizeSmallButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Small");
         private void SizeMediumButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Medium");
         private void SizeLargeButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Large");
+        private void ViewTasksButton_Click(object sender, RoutedEventArgs e) => SetCardSize("Tasks");
         private void SetCardSize(string size)
         {
             _cardSize = size;
+            try
+            {
+                var config = SettingsService.Current;
+                config.CardSize = size;
+                SettingsService.Save(config);
+            }
+            catch { }
 
             var active = new SolidColorBrush(Color.FromRgb(0, 132, 255));
             var inactive = new SolidColorBrush(Color.FromArgb(32, 255, 255, 255));
             var activeFg = Brushes.White;
             var inactiveFg = new SolidColorBrush(Color.FromRgb(136, 136, 136));
 
-            SizeSmallButton.Background = size == "Small" ? active : inactive;
-            SizeSmallButton.Foreground = size == "Small" ? activeFg : inactiveFg;
-            SizeMediumButton.Background = size == "Medium" ? active : inactive;
-            SizeMediumButton.Foreground = size == "Medium" ? activeFg : inactiveFg;
-            SizeLargeButton.Background = size == "Large" ? active : inactive;
-            SizeLargeButton.Foreground = size == "Large" ? activeFg : inactiveFg;
+            if (SizeListButton != null)
+            {
+                SizeListButton.Background = size == "List" ? active : inactive;
+                SizeListButton.Foreground = size == "List" ? activeFg : inactiveFg;
+            }
+            if (SizeTableButton != null)
+            {
+                SizeTableButton.Background = size == "Table" ? active : inactive;
+                SizeTableButton.Foreground = size == "Table" ? activeFg : inactiveFg;
+            }
+            if (SizeSmallButton != null)
+            {
+                SizeSmallButton.Background = size == "Small" ? active : inactive;
+                SizeSmallButton.Foreground = size == "Small" ? activeFg : inactiveFg;
+            }
+            if (SizeMediumButton != null)
+            {
+                SizeMediumButton.Background = size == "Medium" ? active : inactive;
+                SizeMediumButton.Foreground = size == "Medium" ? activeFg : inactiveFg;
+            }
+            if (SizeLargeButton != null)
+            {
+                SizeLargeButton.Background = size == "Large" ? active : inactive;
+                SizeLargeButton.Foreground = size == "Large" ? activeFg : inactiveFg;
+            }
+            if (ViewTasksButton != null)
+            {
+                ViewTasksButton.Background = size == "Tasks" ? active : inactive;
+                ViewTasksButton.Foreground = size == "Tasks" ? activeFg : inactiveFg;
+            }
 
             RefreshNotesList();
         }
@@ -885,6 +1290,600 @@ namespace StickyNotes__
             menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
             menu.IsOpen = true;
         }
+
+        public void RecordRecentNote(int noteId)
+        {
+            try
+            {
+                if (_recentNoteIds == null) _recentNoteIds = new List<int>();
+                _recentNoteIds.Remove(noteId);
+                _recentNoteIds.Insert(0, noteId);
+                if (_recentNoteIds.Count > 8)
+                {
+                    _recentNoteIds = _recentNoteIds.Take(8).ToList();
+                }
+                var config = SettingsService.Current;
+                config.RecentNoteIds = _recentNoteIds;
+                SettingsService.Save(config);
+
+                Dispatcher.InvokeAsync(RenderRecentNotes);
+            }
+            catch {}
+        }
+
+        private void ClearRecentNotes_Click(object sender, RoutedEventArgs e)
+        {
+            _recentNoteIds.Clear();
+            var config = SettingsService.Current;
+            config.RecentNoteIds = _recentNoteIds;
+            SettingsService.Save(config);
+            RenderRecentNotes();
+        }
+
+        public void RenderRecentNotes()
+        {
+            if (RecentNotesBar == null || RecentNotesStackPanel == null) return;
+            if (_recentNoteIds == null || _recentNoteIds.Count == 0)
+            {
+                RecentNotesBar.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            RecentNotesStackPanel.Children.Clear();
+            int renderedCount = 0;
+
+            foreach (int id in _recentNoteIds.ToList())
+            {
+                var note = DatabaseHelper.GetNote(id);
+                if (note == null) continue;
+
+                renderedCount++;
+                string title = string.IsNullOrWhiteSpace(note.Title) ? "Sticky Note" : note.Title;
+                if (title.Length > 16) title = title.Substring(0, 15) + "…";
+
+                var btn = new Button
+                {
+                    Content = title,
+                    ToolTip = string.IsNullOrWhiteSpace(note.Title) ? "Sticky Note" : note.Title,
+                    Tag = id,
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(0, 0, 4, 0),
+                    Background = new SolidColorBrush(Color.FromArgb(0x18, 0xff, 0xff, 0xff)),
+                    Foreground = new SolidColorBrush(Color.FromArgb(0xcc, 0xff, 0xff, 0xff)),
+                    FontSize = 9.5,
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                var style = new Style(typeof(Border));
+                style.Setters.Add(new Setter(Border.CornerRadiusProperty, new CornerRadius(4)));
+                btn.Resources.Add(typeof(Border), style);
+
+                int capturedId = id;
+                btn.Click += (s, ev) => OpenNoteWindow(capturedId);
+
+                var menu = new ContextMenu();
+                var removeMenuItem = new MenuItem { Header = "Remove from Recents" };
+                removeMenuItem.Click += (s, ev) =>
+                {
+                    _recentNoteIds.Remove(capturedId);
+                    SettingsService.Current.RecentNoteIds = _recentNoteIds;
+                    SettingsService.Save(SettingsService.Current);
+                    RenderRecentNotes();
+                };
+                menu.Items.Add(removeMenuItem);
+                btn.ContextMenu = menu;
+
+                RecentNotesStackPanel.Children.Add(btn);
+            }
+
+            RecentNotesBar.Visibility = renderedCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void HeatmapToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (HeatmapContainer == null) return;
+            bool isVisible = HeatmapContainer.Visibility == Visibility.Visible;
+            HeatmapContainer.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+            SettingsService.Current.ShowHeatmap = !isVisible;
+            SettingsService.Save(SettingsService.Current);
+
+            if (!isVisible)
+            {
+                RenderActivityHeatmap();
+            }
+        }
+
+        private void CloseHeatmap_Click(object sender, RoutedEventArgs e)
+        {
+            if (HeatmapContainer != null)
+            {
+                HeatmapContainer.Visibility = Visibility.Collapsed;
+                SettingsService.Current.ShowHeatmap = false;
+                SettingsService.Save(SettingsService.Current);
+            }
+        }
+
+        private void ClearHeatmapDateFilter_Click(object sender, RoutedEventArgs e)
+        {
+            _filterExactDate = null;
+            if (HeatmapFilterPill != null) HeatmapFilterPill.Visibility = Visibility.Collapsed;
+            RefreshNotesList();
+        }
+
+        public void RenderActivityHeatmap()
+        {
+            if (HeatmapGrid == null) return;
+            HeatmapGrid.Children.Clear();
+            HeatmapGrid.ColumnDefinitions.Clear();
+            HeatmapGrid.RowDefinitions.Clear();
+
+            const int weeks = 10;
+            const int daysPerWeek = 7;
+
+            var today = DateTime.Today;
+            int daysSinceMonday = ((int)today.DayOfWeek - 1 + 7) % 7;
+            var currentMonday = today.AddDays(-daysSinceMonday);
+            var startDate = currentMonday.AddDays(-7 * (weeks - 1));
+            var endDate = today;
+
+            var activityMap = DatabaseHelper.GetDailyActivityHeatmap(startDate, endDate.AddDays(7));
+            int totalEdits = activityMap.Values.Sum();
+
+            if (HeatmapStatsText != null)
+            {
+                HeatmapStatsText.Text = $"{totalEdits} edits in last 10 weeks";
+            }
+
+            for (int c = 0; c < weeks; c++)
+            {
+                HeatmapGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            }
+            for (int r = 0; r < daysPerWeek; r++)
+            {
+                HeatmapGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
+            for (int w = 0; w < weeks; w++)
+            {
+                for (int d = 0; d < daysPerWeek; d++)
+                {
+                    var cellDate = startDate.AddDays(w * 7 + d);
+                    if (cellDate > today)
+                    {
+                        var futureCell = new Border
+                        {
+                            Width = 11,
+                            Height = 11,
+                            CornerRadius = new CornerRadius(2),
+                            Margin = new Thickness(1.5),
+                            Background = new SolidColorBrush(Color.FromArgb(0x06, 0xff, 0xff, 0xff))
+                        };
+                        Grid.SetColumn(futureCell, w);
+                        Grid.SetRow(futureCell, d);
+                        HeatmapGrid.Children.Add(futureCell);
+                        continue;
+                    }
+
+                    string key = cellDate.ToString("yyyy-MM-dd");
+                    int count = activityMap.TryGetValue(key, out int cVal) ? cVal : 0;
+
+                    Color cellColor;
+                    if (count == 0) cellColor = Color.FromArgb(0x14, 0xff, 0xff, 0xff);
+                    else if (count == 1) cellColor = Color.FromRgb(0x1a, 0x6e, 0x3d);
+                    else if (count <= 3) cellColor = Color.FromRgb(0x22, 0x99, 0x54);
+                    else if (count <= 6) cellColor = Color.FromRgb(0x2e, 0xcc, 0x71);
+                    else cellColor = Color.FromRgb(0x58, 0xd6, 0x8d);
+
+                    var cell = new Border
+                    {
+                        Width = 11,
+                        Height = 11,
+                        CornerRadius = new CornerRadius(2),
+                        Margin = new Thickness(1.5),
+                        Background = new SolidColorBrush(cellColor),
+                        Cursor = Cursors.Hand,
+                        ToolTip = $"{cellDate:ddd, MMM d, yyyy}: {count} edit{(count == 1 ? "" : "s")}"
+                    };
+
+                    if (_filterExactDate.HasValue && _filterExactDate.Value.Date == cellDate.Date)
+                    {
+                        cell.BorderBrush = Brushes.White;
+                        cell.BorderThickness = new Thickness(1.5);
+                    }
+
+                    var capturedDate = cellDate;
+                    cell.MouseLeftButtonUp += (s, ev) =>
+                    {
+                        if (_filterExactDate.HasValue && _filterExactDate.Value.Date == capturedDate.Date)
+                        {
+                            _filterExactDate = null;
+                            if (HeatmapFilterPill != null) HeatmapFilterPill.Visibility = Visibility.Collapsed;
+                        }
+                        else
+                        {
+                            _filterExactDate = capturedDate;
+                            if (HeatmapFilterPillText != null) HeatmapFilterPillText.Text = $"Filtering: {capturedDate:MMM d, yyyy}";
+                            if (HeatmapFilterPill != null) HeatmapFilterPill.Visibility = Visibility.Visible;
+                        }
+                        RenderActivityHeatmap();
+                        RefreshNotesList();
+                    };
+
+                    Grid.SetColumn(cell, w);
+                    Grid.SetRow(cell, d);
+                    HeatmapGrid.Children.Add(cell);
+                }
+            }
+        }
+
+        private void SavePresetButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new InputDialog("Enter a name for this smart preset view:", "Save Preset View", "Standup") { Owner = this };
+            if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.Answer))
+            {
+                string name = dialog.Answer.Trim();
+                var config = SettingsService.Current;
+                if (config.SavedViews == null) config.SavedViews = new List<SavedViewPreset>();
+
+                var preset = new SavedViewPreset
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = name,
+                    SearchText = SearchTextBox?.Text ?? "",
+                    Tag = _selectedTagFilter,
+                    Color = _filterColor,
+                    FavoritesOnly = _filterFavoritesOnly,
+                    TasksOnly = _filterHasTasksOnly,
+                    FilesOnly = _filterHasFilesOnly,
+                    SortOrder = _sortOrder,
+                    CardSize = _cardSize
+                };
+
+                config.SavedViews.Add(preset);
+                SettingsService.Save(config);
+                RenderSavedPresets();
+            }
+        }
+
+        public void RenderSavedPresets()
+        {
+            if (SavedPresetsContainer == null || SavedPresetsStackPanel == null) return;
+            var presets = SettingsService.Current.SavedViews;
+            if (presets == null || presets.Count == 0)
+            {
+                SavedPresetsContainer.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            SavedPresetsContainer.Visibility = Visibility.Visible;
+            SavedPresetsStackPanel.Children.Clear();
+
+            foreach (var preset in presets)
+            {
+                var btn = new Button
+                {
+                    Content = $"⚡ {preset.Name}",
+                    ToolTip = $"Apply '{preset.Name}' view (Right-click to delete)",
+                    Padding = new Thickness(7, 2, 7, 2),
+                    Margin = new Thickness(0, 0, 4, 0),
+                    Background = new SolidColorBrush(Color.FromArgb(0x20, 0x00, 0x84, 0xff)),
+                    Foreground = new SolidColorBrush(Color.FromArgb(0xee, 0xff, 0xff, 0xff)),
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                var style = new Style(typeof(Border));
+                style.Setters.Add(new Setter(Border.CornerRadiusProperty, new CornerRadius(3)));
+                btn.Resources.Add(typeof(Border), style);
+
+                var capturedPreset = preset;
+                btn.Click += (s, ev) => ApplySavedPreset(capturedPreset);
+
+                var menu = new ContextMenu();
+                var deleteItem = new MenuItem { Header = $"Delete '{preset.Name}'" };
+                deleteItem.Click += (s, ev) =>
+                {
+                    SettingsService.Current.SavedViews.Remove(capturedPreset);
+                    SettingsService.Save(SettingsService.Current);
+                    RenderSavedPresets();
+                };
+                menu.Items.Add(deleteItem);
+                btn.ContextMenu = menu;
+
+                SavedPresetsStackPanel.Children.Add(btn);
+            }
+        }
+
+        private void ApplySavedPreset(SavedViewPreset preset)
+        {
+            if (SearchTextBox != null) SearchTextBox.Text = preset.SearchText;
+            _selectedTagFilter = preset.Tag;
+            _filterColor = preset.Color;
+            _filterFavoritesOnly = preset.FavoritesOnly;
+            _filterHasTasksOnly = preset.TasksOnly;
+            _filterHasFilesOnly = preset.FilesOnly;
+            _sortOrder = string.IsNullOrEmpty(preset.SortOrder) ? "date" : preset.SortOrder;
+            if (!string.IsNullOrEmpty(preset.CardSize))
+            {
+                SetCardSize(preset.CardSize);
+            }
+
+            UpdateFilterChipStyles();
+            RefreshNotesList();
+        }
+
+        public void RenderCategoryJumpRail()
+        {
+            if (CategoryJumpRailPanel == null) return;
+            CategoryJumpRailPanel.Children.Clear();
+
+            var categories = DatabaseHelper.ListAllCategories();
+            if (categories.Count <= 1)
+            {
+                if (CategoryJumpRailContainer != null)
+                    CategoryJumpRailContainer.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            if (CategoryJumpRailContainer != null)
+                CategoryJumpRailContainer.Visibility = Visibility.Visible;
+
+            foreach (var cat in categories)
+            {
+                var catBrush = GetCategoryColorBrush(cat);
+                var btn = new Button
+                {
+                    Tag = cat,
+                    ToolTip = $"Filter notes in '{cat}'",
+                    Padding = new Thickness(6, 1.5, 6, 1.5),
+                    Margin = new Thickness(0, 0, 4, 0),
+                    Background = new SolidColorBrush(Color.FromArgb(0x14, 0xff, 0xff, 0xff)),
+                    Foreground = new SolidColorBrush(Color.FromArgb(0xaa, 0xff, 0xff, 0xff)),
+                    FontSize = 8.5,
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                var style = new Style(typeof(Border));
+                style.Setters.Add(new Setter(Border.CornerRadiusProperty, new CornerRadius(3)));
+                btn.Resources.Add(typeof(Border), style);
+
+                var sp = new StackPanel { Orientation = Orientation.Horizontal };
+                var dot = new Ellipse
+                {
+                    Width = 6,
+                    Height = 6,
+                    Fill = catBrush,
+                    Margin = new Thickness(0, 0, 4, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var tb = new TextBlock
+                {
+                    Text = cat,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                sp.Children.Add(dot);
+                sp.Children.Add(tb);
+                btn.Content = sp;
+
+                string capturedCat = cat;
+                btn.Click += (s, ev) =>
+                {
+                    if (SearchTextBox == null) return;
+                    string target = $"cat:{capturedCat}";
+                    if (SearchTextBox.Text.Trim().Equals(target, StringComparison.OrdinalIgnoreCase))
+                    {
+                        SearchTextBox.Text = "";
+                    }
+                    else
+                    {
+                        SearchTextBox.Text = target;
+                    }
+                    RefreshNotesList();
+                };
+
+                CategoryJumpRailPanel.Children.Add(btn);
+            }
+        }
+
+        private void CloseTagMatrix_Click(object sender, RoutedEventArgs e)
+        {
+            if (TagMatrixDrawer != null) TagMatrixDrawer.Visibility = Visibility.Collapsed;
+        }
+
+        private void TagMatrixModeButton_Click(object sender, RoutedEventArgs e)
+        {
+            _tagMatrixModeAll = !_tagMatrixModeAll;
+            if (TagMatrixModeButton != null)
+            {
+                TagMatrixModeButton.Content = _tagMatrixModeAll ? "Mode: ALL (AND)" : "Mode: ANY (OR)";
+                TagMatrixModeButton.Background = _tagMatrixModeAll ? new SolidColorBrush(Color.FromRgb(0x7b, 0x1f, 0xa2)) : new SolidColorBrush(Color.FromArgb(0x18, 0xff, 0xff, 0xff));
+            }
+            RefreshNotesList();
+        }
+
+        private void TagMatrixSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            RenderTagMatrixPills();
+        }
+
+        private void ClearAllTagsFilter_Click(object sender, RoutedEventArgs e)
+        {
+            _selectedTags.Clear();
+            _selectedTagFilter = null;
+            RenderTagMatrixPills();
+            UpdateFilterChipStyles();
+            RefreshNotesList();
+        }
+
+        private void ApplyTagMatrix_Click(object sender, RoutedEventArgs e)
+        {
+            if (TagMatrixDrawer != null) TagMatrixDrawer.Visibility = Visibility.Collapsed;
+            RefreshNotesList();
+        }
+
+        public void RenderTagMatrixPills()
+        {
+            if (TagMatrixWrapPanel == null) return;
+            TagMatrixWrapPanel.Children.Clear();
+
+            var tagsMap = DatabaseHelper.GetAllNoteTagsMap();
+            var tagCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var list in tagsMap.Values)
+            {
+                foreach (var t in list)
+                {
+                    tagCounts[t] = tagCounts.TryGetValue(t, out int count) ? count + 1 : 1;
+                }
+            }
+
+            string filter = TagMatrixSearchBox?.Text?.Trim() ?? "";
+            var sortedTags = tagCounts
+                .Where(kvp => string.IsNullOrEmpty(filter) || kvp.Key.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(kvp => kvp.Value)
+                .ThenBy(kvp => kvp.Key)
+                .ToList();
+
+            if (sortedTags.Count == 0)
+            {
+                TagMatrixWrapPanel.Children.Add(new TextBlock
+                {
+                    Text = "No tags found",
+                    Foreground = new SolidColorBrush(Color.FromArgb(0x66, 0xff, 0xff, 0xff)),
+                    FontSize = 9,
+                    Margin = new Thickness(4)
+                });
+                return;
+            }
+
+            foreach (var item in sortedTags)
+            {
+                bool isSelected = _selectedTags.Contains(item.Key);
+                var btn = new Button
+                {
+                    Content = $"#{item.Key} ({item.Value})",
+                    Margin = new Thickness(0, 0, 4, 4),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    FontSize = 8.5,
+                    Cursor = Cursors.Hand,
+                    BorderThickness = new Thickness(1),
+                    Background = isSelected ? new SolidColorBrush(Color.FromRgb(0x00, 0x84, 0xff)) : new SolidColorBrush(Color.FromArgb(0x18, 0xff, 0xff, 0xff)),
+                    Foreground = isSelected ? Brushes.White : new SolidColorBrush(Color.FromArgb(0xcc, 0xff, 0xff, 0xff)),
+                    BorderBrush = isSelected ? Brushes.White : new SolidColorBrush(Color.FromArgb(0x22, 0xff, 0xff, 0xff))
+                };
+                var style = new Style(typeof(Border));
+                style.Setters.Add(new Setter(Border.CornerRadiusProperty, new CornerRadius(3)));
+                btn.Resources.Add(typeof(Border), style);
+
+                string tagKey = item.Key;
+                btn.Click += (s, ev) =>
+                {
+                    if (_selectedTags.Contains(tagKey))
+                        _selectedTags.Remove(tagKey);
+                    else
+                        _selectedTags.Add(tagKey);
+
+                    RenderTagMatrixPills();
+                    UpdateFilterChipStyles();
+                    RefreshNotesList();
+                };
+
+                TagMatrixWrapPanel.Children.Add(btn);
+            }
+        }
+
+        private void GlobalTaskCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is CheckBox cb && cb.Tag is GlobalTaskItemViewModel task)
+            {
+                bool newState = cb.IsChecked == true;
+                task.IsCompleted = newState;
+                DatabaseHelper.ToggleTaskInNote(task.NoteId, task.LineIndex, newState);
+
+                if (_openNoteWindows.TryGetValue(task.NoteId, out var openWnd))
+                {
+                    openWnd.ReloadFromDatabase();
+                }
+
+                RefreshNotesList();
+            }
+        }
+
+        private void GlobalTaskNoteLink_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement fe && fe.Tag is int noteId)
+            {
+                OpenNoteWindow(noteId);
+            }
+        }
+
+        private static List<GlobalTaskItemViewModel> ExtractTasksFromNote(NoteCardViewModel noteVm)
+        {
+            var list = new List<GlobalTaskItemViewModel>();
+            if (noteVm.IsSecure || string.IsNullOrEmpty(noteVm.FullPlainText)) return list;
+
+            var lines = noteVm.FullPlainText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                string trimmed = line.TrimStart();
+                if ((trimmed.StartsWith("- [ ]") || trimmed.StartsWith("* [ ]") ||
+                     trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase) ||
+                     trimmed.StartsWith("* [x]", StringComparison.OrdinalIgnoreCase)) && trimmed.Length >= 5)
+                {
+                    bool isChecked = trimmed.Substring(3, 1).Equals("x", StringComparison.OrdinalIgnoreCase);
+                    string taskDesc = trimmed.Substring(5).Trim();
+                    if (string.IsNullOrWhiteSpace(taskDesc)) taskDesc = "(Untitled task)";
+
+                    list.Add(new GlobalTaskItemViewModel
+                    {
+                        NoteId = noteVm.Id,
+                        NoteTitle = string.IsNullOrEmpty(noteVm.Title) ? "Sticky Note" : noteVm.Title,
+                        NoteBrush = noteVm.CardHeaderBrush,
+                        LineIndex = i,
+                        TaskText = taskDesc,
+                        IsCompleted = isChecked
+                    });
+                }
+            }
+            return list;
+        }
+
+        private List<object> BuildTaskGroupRows(string headerTitle, Brush accentBrush, List<GlobalTaskItemViewModel> items, string expanderKey)
+        {
+            bool isExpanded = !_expanderStates.ContainsKey(expanderKey) || _expanderStates[expanderKey];
+
+            var solidAccent = (accentBrush as SolidColorBrush)?.Color ?? Colors.White;
+            var pillBackground = new SolidColorBrush(Color.FromArgb(0x28, solidAccent.R, solidAccent.G, solidAccent.B));
+            pillBackground.Freeze();
+
+            var header = new NoteGroupHeaderViewModel
+            {
+                Title = headerTitle,
+                AccentBrush = accentBrush,
+                PillBackground = pillBackground,
+                Count = items.Count,
+                ExpanderKey = expanderKey,
+                IsExpanded = isExpanded
+            };
+
+            var rows = new List<object> { header };
+            if (isExpanded) rows.AddRange(items);
+            return rows;
+        }
+    }
+
+    public class GlobalTaskItemViewModel
+    {
+        public int NoteId { get; set; }
+        public string NoteTitle { get; set; } = "";
+        public Brush NoteBrush { get; set; } = Brushes.Gray;
+        public int LineIndex { get; set; }
+        public string TaskText { get; set; } = "";
+        public bool IsCompleted { get; set; }
+        public Brush TextColor => IsCompleted ? NoteCardViewModel.FrozenBrush(0x88, 0xff, 0xff, 0xff) : Brushes.White;
+        public double TextOpacity => IsCompleted ? 0.6 : 1.0;
+        public TextDecorationCollection? Strikethrough => IsCompleted ? TextDecorations.Strikethrough : null;
     }
 
     public class QuickOpenItem
@@ -914,8 +1913,21 @@ namespace StickyNotes__
         public override DataTemplate? SelectTemplate(object item, DependencyObject container)
         {
             var element = container as FrameworkElement;
-            string key = item is NoteGroupHeaderViewModel ? "NoteGroupHeaderTemplate" : "NoteCardTemplate";
-            return element?.FindResource(key) as DataTemplate;
+            if (item is NoteGroupHeaderViewModel)
+                return element?.FindResource("NoteGroupHeaderTemplate") as DataTemplate;
+
+            if (item is GlobalTaskItemViewModel)
+                return element?.FindResource("GlobalTaskRowTemplate") as DataTemplate;
+
+            if (item is NoteCardViewModel vm)
+            {
+                if (vm.CardSize == "List")
+                    return element?.FindResource("NoteListItemTemplate") as DataTemplate;
+                if (vm.CardSize == "Table")
+                    return element?.FindResource("NoteTableRowTemplate") as DataTemplate;
+            }
+
+            return element?.FindResource("NoteCardTemplate") as DataTemplate;
         }
     }
 

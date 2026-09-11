@@ -265,8 +265,11 @@
              A plain data row (not an Expander) so it can sit inline in a single flat, virtualizing ListBox
              alongside note cards - collapsing a group simply omits its card rows from the bound list. -->
         <DataTemplate x:Key="NoteGroupHeaderTemplate">
-            <Border Background="#12FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="10"
-                    Padding="10,9" Margin="0,4,0,10" Cursor="Hand"
+            <Border Background="#12FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8"
+                    Padding="10,8" Margin="0,3,0,8" Cursor="Hand"
+                    AllowDrop="True"
+                    DragOver="GroupHeader_DragOver"
+                    Drop="GroupHeader_Drop"
                     MouseLeftButtonUp="GroupHeader_Click"
                     ContextMenu="{Binding HeaderContextMenu}">
                 <Grid>
@@ -285,17 +288,207 @@
 
                     <Ellipse Grid.Column="1" Width="8" Height="8" Fill="{Binding AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
 
-                    <TextBlock Grid.Column="2" Text="{Binding Title}" Foreground="White" FontWeight="SemiBold" FontSize="12.5"
+                    <TextBlock Grid.Column="2" Text="{Binding Title}" Foreground="White" FontWeight="SemiBold" FontSize="12"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
 
                     <Border Grid.Column="3" Background="{Binding PillBackground}" CornerRadius="8" Padding="7,1" Margin="6,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Count}" Foreground="{Binding AccentBrush}" FontSize="10.5" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding Count}" Foreground="{Binding AccentBrush}" FontSize="10" FontWeight="Bold"/>
                     </Border>
 
                     <Button Grid.Column="4" Content="➕" ToolTip="{Binding AddTooltip}" Visibility="{Binding AddButtonVisibility}"
                             Click="GroupHeaderAdd_Click"
                             Background="Transparent" BorderThickness="0" Foreground="{Binding AccentBrush}" FontSize="10"
                             Cursor="Hand" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- Ultra-compact single-line list row template -->
+        <DataTemplate x:Key="NoteListItemTemplate">
+            <Border x:Name="CardBorder" CornerRadius="6" BorderThickness="1" BorderBrush="#14FFFFFF"
+                    Background="#14FFFFFF" Cursor="Hand" Margin="0,0,0,4" Padding="8,5"
+                    PreviewMouseLeftButtonDown="NoteCard_PreviewMouseLeftButtonDown"
+                    MouseMove="NoteCard_MouseMove"
+                    ContextMenuOpening="CardBorder_ContextMenuOpening">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2AFFFFFF"/>
+                                <Setter Property="BorderBrush" Value="#0084ff"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/> <!-- Color Dot -->
+                        <ColumnDefinition Width="*"/>    <!-- Title -->
+                        <ColumnDefinition Width="Auto"/> <!-- Status indicators -->
+                        <ColumnDefinition Width="Auto"/> <!-- Date -->
+                        <ColumnDefinition Width="Auto"/> <!-- Star button -->
+                        <ColumnDefinition Width="Auto"/> <!-- Delete button on hover -->
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Color Dot -->
+                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{Binding CardHeaderBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+
+                    <!-- Title -->
+                    <TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" Foreground="{Binding CardTextBrush}"
+                               FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+
+                    <!-- Indicators (tasks, attachments/links) -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,4,0">
+                        <TextBlock Text="☑" Foreground="#0084ff" FontSize="10.5" Margin="0,0,4,0" ToolTip="{Binding TaskStatsText}"
+                                   Visibility="{Binding TaskProgressVisibility}"/>
+                        <TextBlock Text="{Binding QuickOpenIcon}" FontSize="10.5" Foreground="#aaaaaa" Margin="0,0,4,0" ToolTip="{Binding QuickOpenToolTip}"
+                                   Visibility="{Binding QuickOpenVisibility}"/>
+                    </StackPanel>
+
+                    <!-- Date Text -->
+                    <TextBlock Grid.Column="3" Text="{Binding DateText}" Foreground="#66ffffff" FontSize="9.5"
+                               VerticalAlignment="Center" Margin="2,0,4,0"/>
+
+                    <!-- Star Favorite Button -->
+                    <Button Grid.Column="4" Click="FavoriteButton_Click" Tag="{Binding Id}" ToolTip="{Binding FavoriteToolTip}"
+                            Background="Transparent" BorderThickness="0" Foreground="{Binding FavoriteBrush}"
+                            Width="20" Height="20" FontSize="11" Cursor="Hand" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding FavoriteIcon}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- Delete Button on Hover -->
+                    <Button Grid.Column="5" Content="✕" Click="DeleteCardButton_Click" Tag="{Binding Id}" ToolTip="Delete Note"
+                            Background="Transparent" BorderThickness="0" Foreground="#ff5252"
+                            Width="18" Height="18" FontSize="9.5" Cursor="Hand" VerticalAlignment="Center" Margin="2,0,0,0">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- High-density multi-column table row template -->
+        <DataTemplate x:Key="NoteTableRowTemplate">
+            <Border x:Name="CardBorder" CornerRadius="4" BorderThickness="1" BorderBrush="#14FFFFFF"
+                    Background="#10FFFFFF" Cursor="Hand" Margin="0,0,0,3" Padding="7,4"
+                    PreviewMouseLeftButtonDown="NoteCard_PreviewMouseLeftButtonDown"
+                    MouseMove="NoteCard_MouseMove"
+                    ContextMenuOpening="CardBorder_ContextMenuOpening">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#25FFFFFF"/>
+                                <Setter Property="BorderBrush" Value="#0084ff"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/> <!-- Dot -->
+                        <ColumnDefinition Width="*"/>    <!-- Title -->
+                        <ColumnDefinition Width="Auto"/> <!-- Category Pill -->
+                        <ColumnDefinition Width="Auto"/> <!-- Tasks Badge -->
+                        <ColumnDefinition Width="Auto"/> <!-- Date -->
+                        <ColumnDefinition Width="Auto"/> <!-- Favorite -->
+                        <ColumnDefinition Width="Auto"/> <!-- Delete -->
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{Binding CardHeaderBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+
+                    <TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" Foreground="{Binding CardTextBrush}"
+                               FontSize="11.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                    <!-- Category Pill -->
+                    <Border Grid.Column="2" Background="#18FFFFFF" CornerRadius="4" Padding="5,1" Margin="0,0,5,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Category}" Foreground="#88FFFFFF" FontSize="9" TextTrimming="CharacterEllipsis" MaxWidth="70"/>
+                    </Border>
+
+                    <!-- Tasks Badge -->
+                    <Border Grid.Column="3" Background="#1A0084FF" CornerRadius="4" Padding="4,1" Margin="0,0,5,0" VerticalAlignment="Center"
+                            Visibility="{Binding TaskProgressVisibility}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="☑ " FontSize="9" Foreground="#0084ff"/>
+                            <TextBlock Text="{Binding TaskStatsText}" FontSize="8.5" Foreground="#99FFFFFF" TextTrimming="CharacterEllipsis" MaxWidth="60"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Date -->
+                    <TextBlock Grid.Column="4" Text="{Binding DateText}" Foreground="#55ffffff" FontSize="9" VerticalAlignment="Center" Margin="0,0,4,0"/>
+
+                    <!-- Star Favorite -->
+                    <Button Grid.Column="5" Click="FavoriteButton_Click" Tag="{Binding Id}" ToolTip="{Binding FavoriteToolTip}"
+                            Background="Transparent" BorderThickness="0" Foreground="{Binding FavoriteBrush}"
+                            Width="18" Height="18" FontSize="10" Cursor="Hand" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding FavoriteIcon}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- Delete on hover -->
+                    <Button Grid.Column="6" Content="✕" Click="DeleteCardButton_Click" Tag="{Binding Id}" ToolTip="Delete Note"
+                            Background="Transparent" BorderThickness="0" Foreground="#ff5252"
+                            Width="16" Height="16" FontSize="9" Cursor="Hand" VerticalAlignment="Center" Margin="2,0,0,0">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- Global Task Digest Row Template -->
+        <DataTemplate x:Key="GlobalTaskRowTemplate">
+            <Border CornerRadius="5" Background="#12FFFFFF" BorderBrush="#14FFFFFF" BorderThickness="1"
+                    Margin="0,0,0,4" Padding="8,6">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#22FFFFFF"/>
+                                <Setter Property="BorderBrush" Value="#260084ff"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/> <!-- Checkbox -->
+                        <ColumnDefinition Width="*"/>    <!-- Task text -->
+                        <ColumnDefinition Width="Auto"/> <!-- Origin Note Badge -->
+                    </Grid.ColumnDefinitions>
+
+                    <CheckBox Grid.Column="0" IsChecked="{Binding IsCompleted, Mode=OneWay}"
+                              Click="GlobalTaskCheckBox_Click" Tag="{Binding}"
+                              VerticalAlignment="Center" Margin="0,0,8,0" Cursor="Hand"/>
+
+                    <TextBlock Grid.Column="1" Text="{Binding TaskText}" TextWrapping="Wrap"
+                               Foreground="{Binding TextColor}" TextDecorations="{Binding Strikethrough}"
+                               Opacity="{Binding TextOpacity}" FontSize="11.5" VerticalAlignment="Center"/>
+
+                    <Button Grid.Column="2" Click="GlobalTaskNoteLink_Click" Tag="{Binding NoteId}"
+                            ToolTip="Open parent note" Background="#18FFFFFF" BorderThickness="0" Cursor="Hand"
+                            Padding="6,2" Margin="6,0,0,0" VerticalAlignment="Center">
+                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="6" Height="6" Fill="{Binding NoteBrush}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding NoteTitle}" Foreground="#88FFFFFF" FontSize="9.5" TextTrimming="CharacterEllipsis" MaxWidth="80" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -347,64 +540,54 @@
     </Window.Resources>
 
     <Border x:Name="MainWindowBorder" Background="#E6121212" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="12">
-        <!-- Root Grid: content + status toast overlay -->
         <Grid>
+            <!-- Left edge resize handle -->
+            <Border x:Name="LeftResizeGrip" HorizontalAlignment="Left" Width="7" Cursor="SizeWE"
+                    Background="Transparent" MouseLeftButtonDown="LeftResizeGrip_MouseDown"
+                    MouseMove="LeftResizeGrip_MouseMove" MouseLeftButtonUp="LeftResizeGrip_MouseUp"
+                    Panel.ZIndex="100"/>
 
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <!-- Row 0: Logo &amp; Action Icons -->
-                <RowDefinition Height="Auto"/> <!-- Row 1: Add Section (Note Manager / New Note / Quick Actions) -->
-                <RowDefinition Height="Auto"/> <!-- Row 2: Filter Section (Search / Tags) -->
-                <RowDefinition Height="Auto"/> <!-- Row 3: Sort Section (Sort by / Card size) -->
-                <RowDefinition Height="Auto"/> <!-- Row 4: Stale Notes Digest Banner -->
-                <RowDefinition Height="*"/>    <!-- Row 5: Notes List / Clipboard ScrollViewer -->
-            </Grid.RowDefinitions>
+            <!-- Main Content Container with standard padding -->
+            <Grid Margin="12,10,12,10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Row 0: Logo &amp; Top Window Controls -->
+                    <RowDefinition Height="Auto"/> <!-- Row 1: Actions &amp; Search Bar -->
+                    <RowDefinition Height="Auto"/> <!-- Row 2: Filter Chips &amp; Sort/View Toolbar -->
+                    <RowDefinition Height="Auto"/> <!-- Row 3: Stale Notes Digest Banner -->
+                    <RowDefinition Height="*"/>    <!-- Row 4: Virtualized Notes List -->
+                </Grid.RowDefinitions>
 
-            <!-- Section boundary style shared by the Add/Filter/Sort groups below -->
-            <Grid.Resources>
-                <Style x:Key="SidebarSectionBoundary" TargetType="Border">
-                    <Setter Property="Background" Value="#0Cffffff"/>
-                    <Setter Property="BorderBrush" Value="#16ffffff"/>
-                    <Setter Property="BorderThickness" Value="1"/>
-                    <Setter Property="CornerRadius" Value="10"/>
-                    <Setter Property="Padding" Value="10"/>
-                    <Setter Property="Margin" Value="0,0,0,10"/>
-                </Style>
-                <Style x:Key="SidebarSectionLabel" TargetType="TextBlock">
-                    <Setter Property="Foreground" Value="#5Cffffff"/>
-                    <Setter Property="FontSize" Value="9.5"/>
-                    <Setter Property="FontWeight" Value="Bold"/>
-                    <Setter Property="Margin" Value="2,0,0,8"/>
-                </Style>
-                <!-- Thin, theme-matching horizontal scrollbar for the tags filter row (replaces the default OS scrollbar) -->
-                <Style x:Key="ThinHorizontalScrollBar" TargetType="ScrollBar">
-                    <Setter Property="Height" Value="4"/>
-                    <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="BorderThickness" Value="0"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="ScrollBar">
-                                <Grid SnapsToDevicePixels="true">
-                                    <Track x:Name="PART_Track" IsEnabled="{TemplateBinding IsEnabled}">
-                                        <Track.Thumb>
-                                            <Thumb>
-                                                <Thumb.Template>
-                                                    <ControlTemplate TargetType="Thumb">
-                                                        <Border Background="#33ffffff" CornerRadius="2"/>
-                                                    </ControlTemplate>
-                                                </Thumb.Template>
-                                            </Thumb>
-                                        </Track.Thumb>
-                                    </Track>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </Grid.Resources>
+                <Grid.Resources>
+                    <!-- Thin, theme-matching horizontal scrollbar for the filter chips row -->
+                    <Style x:Key="ThinHorizontalScrollBar" TargetType="ScrollBar">
+                        <Setter Property="Height" Value="3"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ScrollBar">
+                                    <Grid SnapsToDevicePixels="true">
+                                        <Track x:Name="PART_Track" IsEnabled="{TemplateBinding IsEnabled}">
+                                            <Track.Thumb>
+                                                <Thumb>
+                                                    <Thumb.Template>
+                                                        <ControlTemplate TargetType="Thumb">
+                                                            <Border Background="#33ffffff" CornerRadius="1.5"/>
+                                                        </ControlTemplate>
+                                                    </Thumb.Template>
+                                                </Thumb>
+                                            </Track.Thumb>
+                                        </Track>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Grid.Resources>
 
-                <!-- Title &amp; Settings Header (Row 0) -->
-                <Grid Grid.Row="0" Margin="0,0,0,15">
-                        <Grid.ColumnDefinitions>
+                <!-- Top Header: Logo &amp; Window Action Controls (Row 0) -->
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -412,54 +595,48 @@
 
                     <!-- Logo &amp; Title -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Image Source="app_icon.png" Width="22" Height="22" Margin="0,0,8,0" RenderOptions.BitmapScalingMode="HighQuality"/>
-                        <TextBlock Text="StickyNotes++" Foreground="#ffffff" FontSize="16.5" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Image Source="app_icon.png" Width="20" Height="20" Margin="0,0,7,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text="StickyNotes++" Foreground="#ffffff" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/>
                     </StackPanel>
 
-                    <!-- Action Button Controls Stack -->
+                    <!-- Window Controls Stack -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- Sync Button -->
                         <Button x:Name="SyncIconButton" Content="🔄" Click="SyncIconButton_Click" ToolTip="Sync with JeffsNotes"
-                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
+                                Width="24" Height="24" Margin="0,0,2,0" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
+                        <Button Content="⚙" Click="SettingsButton_Click" ToolTip="Options"
+                                Width="24" Height="24" Margin="0,0,2,0" Background="Transparent" BorderThickness="0" 
                                 Foreground="#ffffff" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
 
-                        <!-- Options Button -->
-                        <Button Content="⚙" Click="SettingsButton_Click" ToolTip="Options"
-                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
-                                Foreground="#ffffff" FontSize="13" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
-
-                        <!-- Collapse to Edge Handle -->
                         <Button x:Name="CollapseButton" Content="⇥" Click="CollapseButton_Click" ToolTip="Collapse to Edge Handle (Win+Alt+Z or Esc)"
-                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
-                                Foreground="#ffffff" FontSize="13" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                                Width="24" Height="24" Margin="0,0,2,0" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="12" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
 
-                        <!-- Minimize Sidebar -->
                         <Button Content="—" Click="MinimizeButton_Click" ToolTip="Minimize to Tray"
-                                Width="26" Height="26" Margin="0,0,4,0" Background="Transparent" BorderThickness="0" 
-                                Foreground="#ffffff" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                                Width="24" Height="24" Margin="0,0,2,0" Background="Transparent" BorderThickness="0" 
+                                Foreground="#ffffff" FontSize="10.5" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
 
-                        <!-- Close Sidebar -->
                         <Button Content="✕" Click="CloseButton_Click" ToolTip="Exit"
-                                Width="26" Height="26" Background="Transparent" BorderThickness="0" Margin="0,0,4,0"
-                                Foreground="#ffffff" FontSize="11" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+                                Width="24" Height="24" Background="Transparent" BorderThickness="0"
+                                Foreground="#ffffff" FontSize="10.5" Cursor="Hand" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
                     </StackPanel>
                 </Grid>
 
-                <!-- ================= ADD Section (Row 1): Note Manager / New Note / Quick Actions ================= -->
-                <Border Grid.Row="1" Style="{StaticResource SidebarSectionBoundary}">
-                <StackPanel>
-                    <TextBlock Text="ADD" Style="{StaticResource SidebarSectionLabel}"/>
-
-                    <!-- Note Manager + Combined New Note & Template Dropdown Button -->
-                    <Grid>
+                <!-- Actions &amp; Search Bar (Row 1) -->
+                <StackPanel Grid.Row="1" Margin="0,0,0,7">
+                    <!-- Top Action Row: New Note / Template, Note Manager, and Quick Tools -->
+                    <Grid Margin="0,0,0,7">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="6"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/> <!-- Note Manager -->
+                            <ColumnDefinition Width="5"/>
+                            <ColumnDefinition Width="*"/>    <!-- New Note + Template -->
+                            <ColumnDefinition Width="5"/>
+                            <ColumnDefinition Width="Auto"/> <!-- Quick Capture Tool Icons -->
                         </Grid.ColumnDefinitions>
 
-                        <!-- Note Manager (full-screen tabbed browse/edit view) -->
-                        <Button Grid.Column="0" Click="NoteManagerButton_Click" ToolTip="Open Note Manager" Width="38" Height="38" Cursor="Hand" BorderThickness="0">
+                        <!-- Note Manager -->
+                        <Button Grid.Column="0" Click="NoteManagerButton_Click" ToolTip="Open Note Manager" Width="32" Height="32" Cursor="Hand" BorderThickness="0">
                             <Button.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                     <GradientStop Color="#0d4a4a" Offset="0"/>
@@ -468,21 +645,20 @@
                             </Button.Background>
                             <Button.Resources>
                                 <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="8"/>
+                                    <Setter Property="CornerRadius" Value="6"/>
                                 </Style>
                             </Button.Resources>
-                            <TextBlock Text="🗂" FontSize="14" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <TextBlock Text="🗂" FontSize="13" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
 
-                        <!-- Combined New Note & Template Dropdown Button -->
-                        <Grid Grid.Column="2">
+                        <!-- Combined New Note &amp; Template Dropdown -->
+                        <Grid Grid.Column="2" Height="32">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <!-- New Note Button (left part) -->
-                            <Button Grid.Column="0" Click="NewNoteButton_Click" ToolTip="New Note (Win+Alt+N)" Height="38" Cursor="Hand" BorderThickness="0">
+                            <Button Grid.Column="0" Click="NewNoteButton_Click" ToolTip="New Note (Win+Alt+N)" Height="32" Cursor="Hand" BorderThickness="0">
                                 <Button.Background>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                         <GradientStop Color="#0066cc" Offset="0"/>
@@ -491,20 +667,18 @@
                                 </Button.Background>
                                 <Button.Resources>
                                     <Style TargetType="Border">
-                                        <Setter Property="CornerRadius" Value="8,0,0,8"/>
+                                        <Setter Property="CornerRadius" Value="6,0,0,6"/>
                                     </Style>
                                 </Button.Resources>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock Text="✚" FontSize="15" Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock Text="New Note" FontSize="12" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                                    <TextBlock Text="✚" FontSize="13" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBlock Text="New Note" FontSize="11.5" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
 
-                            <!-- Separator line -->
-                            <Border Grid.Column="0" HorizontalAlignment="Right" Width="1" Height="22" Background="#33ffffff" VerticalAlignment="Center" Panel.ZIndex="1"/>
+                            <Border Grid.Column="0" HorizontalAlignment="Right" Width="1" Height="18" Background="#33ffffff" VerticalAlignment="Center" Panel.ZIndex="1"/>
 
-                            <!-- Template picker dropdown (right part) -->
-                            <Button x:Name="TemplateButton" Grid.Column="1" Click="TemplateButton_Click" ToolTip="New note from template" Width="32" Height="38" Cursor="Hand" BorderThickness="0">
+                            <Button x:Name="TemplateButton" Grid.Column="1" Click="TemplateButton_Click" ToolTip="New note from template" Width="26" Height="32" Cursor="Hand" BorderThickness="0">
                                 <Button.Background>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                         <GradientStop Color="#0066cc" Offset="0"/>
@@ -513,144 +687,97 @@
                                 </Button.Background>
                                 <Button.Resources>
                                     <Style TargetType="Border">
-                                        <Setter Property="CornerRadius" Value="0,8,8,0"/>
+                                        <Setter Property="CornerRadius" Value="0,6,6,0"/>
                                     </Style>
                                 </Button.Resources>
-                                <TextBlock Text="▾" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="▾" FontSize="11" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Button>
                         </Grid>
+
+                        <!-- Quick Capture Action Icons -->
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Snip -->
+                            <Button Click="ScreenshotButton_Click" ToolTip="Screensnip OCR (Win+Alt+S)" Width="28" Height="32" Margin="0,0,3,0" Cursor="Hand" BorderThickness="0" Background="#1c1c28">
+                                <Button.Resources>
+                                    <Style TargetType="Border"><Setter Property="CornerRadius" Value="6"/></Style>
+                                </Button.Resources>
+                                <TextBlock Text="📸" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Button>
+                            <!-- Tabs -->
+                            <Button Click="SaveTabsButton_Click" ToolTip="Save open Chrome/Edge tabs (Win+Alt+T)" Width="28" Height="32" Margin="0,0,3,0" Cursor="Hand" BorderThickness="0" Background="#123d30">
+                                <Button.Resources>
+                                    <Style TargetType="Border"><Setter Property="CornerRadius" Value="6"/></Style>
+                                </Button.Resources>
+                                <TextBlock Text="🔗" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Button>
+                            <!-- File -->
+                            <Button Click="AddFileButton_Click" ToolTip="Save files to note (Win+Alt+F)" Width="28" Height="32" Margin="0,0,3,0" Cursor="Hand" BorderThickness="0" Background="#3d2a0d">
+                                <Button.Resources>
+                                    <Style TargetType="Border"><Setter Property="CornerRadius" Value="6"/></Style>
+                                </Button.Resources>
+                                <TextBlock Text="📎" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Button>
+                            <!-- Meet -->
+                            <Button Click="MeetingNoteButton_Click" ToolTip="Quick meeting note (Win+Alt+M)" Width="28" Height="32" Cursor="Hand" BorderThickness="0" Background="#2c1a45">
+                                <Button.Resources>
+                                    <Style TargetType="Border"><Setter Property="CornerRadius" Value="6"/></Style>
+                                </Button.Resources>
+                                <TextBlock Text="📅" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Button>
+                        </StackPanel>
                     </Grid>
 
-                    <!-- Quick Actions Row -->
-                    <Grid Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="6"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="6"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="6"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Screensnip Button -->
-                        <Button Grid.Column="0" Click="ScreenshotButton_Click" ToolTip="Screensnip OCR (Win+Alt+S)" Height="32" Cursor="Hand" BorderThickness="1">
-                            <Button.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#1a1a2e" Offset="0"/>
-                                    <GradientStop Color="#2d2d44" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Button.Background>
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="BorderBrush" Value="#444466"/>
-                                </Style>
-                            </Button.Style>
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="7"/>
-                                </Style>
-                            </Button.Resources>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock Text="📸" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                <TextBlock Text="Snip" FontSize="11" FontWeight="SemiBold" Foreground="#cccccc" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Save Browser Tabs Button -->
-                        <Button Grid.Column="2" Click="SaveTabsButton_Click" ToolTip="Save open Chrome/Edge tabs (Win+Alt+T)" Height="32" Cursor="Hand" BorderThickness="0">
-                            <Button.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#0d7a5f" Offset="0"/>
-                                    <GradientStop Color="#12a37f" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Button.Background>
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="7"/>
-                                </Style>
-                            </Button.Resources>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock Text="🔗" FontSize="11" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                <TextBlock Text="Tabs" FontSize="11" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Add File Button -->
-                        <Button Grid.Column="4" Click="AddFileButton_Click" ToolTip="Save files/documents to a new note (Win+Alt+F)" Height="32" Cursor="Hand" BorderThickness="0">
-                            <Button.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#7a4d0d" Offset="0"/>
-                                    <GradientStop Color="#a3720f" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Button.Background>
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="7"/>
-                                </Style>
-                            </Button.Resources>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock Text="📎" FontSize="11" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                <TextBlock Text="File" FontSize="11" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Quick Meeting Note Button -->
-                        <Button Grid.Column="6" Click="MeetingNoteButton_Click" ToolTip="Quick meeting note (Win+Alt+M)" Height="32" Cursor="Hand" BorderThickness="0">
-                            <Button.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#5b2d8f" Offset="0"/>
-                                    <GradientStop Color="#7c3fc4" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Button.Background>
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="7"/>
-                                </Style>
-                            </Button.Resources>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock Text="📅" FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBlock Text="Meet" FontSize="11" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-                    </Grid>
-                </StackPanel>
-                </Border>
-
-                <!-- ================= FILTER Section (Row 2): Search / Tags ================= -->
-                <Border Grid.Row="2" Style="{StaticResource SidebarSectionBoundary}">
-                <StackPanel>
-                    <TextBlock Text="FILTER" Style="{StaticResource SidebarSectionLabel}"/>
-
-                    <!-- Search Panel -->
-                    <Grid x:Name="SearchPanel">
+                    <!-- Search Input Row -->
+                    <Grid x:Name="SearchPanel" Height="32">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBox x:Name="SearchTextBox" Grid.Column="0" TextChanged="SearchTextBox_TextChanged" Padding="8,6" Background="#1e1e1e" Foreground="#ffffff" BorderThickness="0" CaretBrush="White">
-                            <TextBox.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="6"/>
-                                </Style>
-                            </TextBox.Resources>
-                        </TextBox>
-                        <TextBlock Grid.Column="0" IsHitTestVisible="False" Text="Search notes..." VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" Foreground="#8a8a8a" FontSize="12">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Text, ElementName=SearchTextBox}" Value="">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                        <!-- Rounded Search Container -->
+                        <Border Grid.Column="0" Background="#1a1a1a" CornerRadius="6" BorderBrush="#26ffffff" BorderThickness="1" Padding="7,0,6,0">
+                            <Grid VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
 
-                        <!-- Advanced/Spotlight search (tag+category+time filters, snippets). Same feature as Win+Alt+Space. -->
-                        <Button Grid.Column="1" x:Name="SpotlightButton" Content="🔎" Click="SpotlightButton_Click" ToolTip="Advanced search (Win+Alt+Space)" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#ffffff" FontSize="13" BorderThickness="0" Cursor="Hand">
+                                <TextBlock Grid.Column="0" Text="🔍" FontSize="10.5" Foreground="#66ffffff" VerticalAlignment="Center" Margin="2,0,6,0"/>
+
+                                <TextBox x:Name="SearchTextBox" Grid.Column="1" TextChanged="SearchTextBox_TextChanged"
+                                         Background="Transparent" Foreground="#ffffff" BorderThickness="0"
+                                         CaretBrush="White" FontSize="11.5" VerticalAlignment="Center" Padding="0,2"/>
+
+                                <TextBlock Grid.Column="1" IsHitTestVisible="False" Text="Search (or #tag, cat:, is:todo)..."
+                                           VerticalAlignment="Center" Foreground="#55ffffff" FontSize="11">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=SearchTextBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- Clear Search Button -->
+                                <Button x:Name="ClearSearchButton" Grid.Column="2" Content="✕" Click="ClearSearchButton_Click"
+                                        ToolTip="Clear search" Background="Transparent" BorderThickness="0" Foreground="#88ffffff"
+                                        Width="18" Height="18" FontSize="9.5" Cursor="Hand" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <Button.Resources>
+                                        <Style TargetType="Border"><Setter Property="CornerRadius" Value="9"/></Style>
+                                    </Button.Resources>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!-- Spotlight / Advanced Search Button -->
+                        <Button Grid.Column="1" x:Name="SpotlightButton" Content="🔎" Click="SpotlightButton_Click"
+                                ToolTip="Spotlight Search (Win+Alt+Space)" Margin="5,0,0,0" Width="32" Height="32"
+                                Background="#20ffffff" Foreground="#ffffff" FontSize="12" BorderThickness="0" Cursor="Hand">
                             <Button.Resources>
                                 <Style TargetType="Border">
                                     <Setter Property="CornerRadius" Value="6"/>
@@ -659,107 +786,264 @@
                         </Button>
                     </Grid>
 
-                    <!-- Tags Filter Bar -->
-                    <ScrollViewer x:Name="TagsFilterScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,10,0,0">
-                        <ScrollViewer.Resources>
-                            <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHorizontalScrollBar}"/>
-                        </ScrollViewer.Resources>
-                        <StackPanel x:Name="TagsFilterPanel" Orientation="Horizontal"/>
-                    </ScrollViewer>
+                    <!-- Recent Notes History Bar -->
+                    <Border x:Name="RecentNotesBar" Background="#0CFFFFFF" CornerRadius="6" Padding="6,3" Margin="0,5,0,0" Visibility="Collapsed">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🕒 Recent:" Foreground="#66FFFFFF" FontSize="9" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHorizontalScrollBar}"/></ScrollViewer.Resources>
+                                <StackPanel x:Name="RecentNotesStackPanel" Orientation="Horizontal"/>
+                            </ScrollViewer>
+                            <Button Grid.Column="2" Content="✕" Click="ClearRecentNotes_Click" ToolTip="Clear recent history"
+                                    Background="Transparent" BorderThickness="0" Foreground="#55FFFFFF" FontSize="8.5" Width="14" Height="14" Cursor="Hand" Margin="3,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
                 </StackPanel>
+
+                <!-- Filter Chips &amp; View Toolbar (Row 2) -->
+                <Border Grid.Row="2" Background="#0AFFFFFF" BorderBrush="#14FFFFFF" BorderThickness="1" CornerRadius="8" Padding="7,5" Margin="0,0,0,7">
+                    <StackPanel>
+                        <!-- Line 1: Quick Filter Chips &amp; Count Badge -->
+                        <Grid Margin="0,0,0,5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                <ScrollViewer.Resources>
+                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHorizontalScrollBar}"/>
+                                </ScrollViewer.Resources>
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- All -->
+                                    <Button x:Name="FilterAllButton" Content="All" Click="FilterAllButton_Click"
+                                            Margin="0,0,3,0" Padding="7,2" Background="#0084ff" Foreground="#ffffff" FontSize="9.5" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+
+                                    <!-- Favorites / Pinned -->
+                                    <Button x:Name="FilterFavoritesButton" Content="⭐ Pinned" Click="FilterFavoritesButton_Click"
+                                            Margin="0,0,3,0" Padding="7,2" Background="#1effffff" Foreground="#aaffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+
+                                    <!-- Has Tasks -->
+                                    <Button x:Name="FilterTasksButton" Content="☑ Tasks" Click="FilterTasksButton_Click"
+                                            Margin="0,0,3,0" Padding="7,2" Background="#1effffff" Foreground="#aaffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+
+                                    <!-- Has Files / Links -->
+                                    <Button x:Name="FilterFilesButton" Content="📎 Media" Click="FilterFilesButton_Click"
+                                            Margin="0,0,3,0" Padding="7,2" Background="#1effffff" Foreground="#aaffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+
+                                    <!-- Color Filter Dropdown -->
+                                    <Button x:Name="FilterColorButton" Content="🎨 Color ▾" Click="FilterColorButton_Click"
+                                            Margin="0,0,3,0" Padding="7,2" Background="#1effffff" Foreground="#aaffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+
+                                    <!-- Tags Filter Dropdown -->
+                                    <Button x:Name="FilterTagsButton" Content="🏷️ Tags ▾" Click="FilterTagsButton_Click"
+                                            Margin="0,0,3,0" Padding="7,2" Background="#1effffff" Foreground="#aaffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+
+                                    <!-- Save Preset Button -->
+                                    <Button x:Name="SavePresetButton" Content="💾 +View" Click="SavePresetButton_Click" ToolTip="Save current search &amp; filter view as a smart preset"
+                                            Margin="0,0,3,0" Padding="6,2" Background="#1effffff" Foreground="#aaffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+
+                                    <!-- Activity Heatmap Toggle -->
+                                    <Button x:Name="HeatmapToggleButton" Content="📊 Heatmap" Click="HeatmapToggleButton_Click" ToolTip="Toggle 10-week activity heatmap"
+                                            Padding="6,2" Background="#1effffff" Foreground="#aaffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                    </Button>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <!-- Count Badge -->
+                            <TextBlock Grid.Column="1" x:Name="ResultCountTextBlock" Text="" Foreground="#77ffffff" FontSize="9.5"
+                                       VerticalAlignment="Center" Margin="5,0,2,0"/>
+                        </Grid>
+
+                        <!-- Line 2: Sort by &amp; View Density Switcher -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Sort Options -->
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Sort:" Foreground="#66ffffff" FontSize="9.5" VerticalAlignment="Center" Margin="0,0,4,0"/>
+
+                                <Button x:Name="SortDateButton" Content="Timeline" Click="SortDateButton_Click"
+                                        Padding="6,2" Background="#0084ff" Foreground="#ffffff" FontSize="9" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,2,0">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+
+                                <Button x:Name="SortCategoryButton" Content="Category" Click="SortCategoryButton_Click"
+                                        Padding="6,2" Background="#1effffff" Foreground="#88ffffff" FontSize="9" BorderThickness="0" Cursor="Hand" Margin="0,0,3,0">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+
+                                <Button x:Name="ExpandCollapseAllButton" Content="Collapse All" Click="ExpandCollapseAllButton_Click"
+                                        Padding="5,2" Background="#1effffff" Foreground="#88ffffff" FontSize="9" BorderThickness="0" Cursor="Hand">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- View Density (List | Table | S | M | L | Tasks) -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="View:" Foreground="#66ffffff" FontSize="9.5" VerticalAlignment="Center" Margin="0,0,4,0"/>
+
+                                <Button x:Name="SizeListButton" Content="List" Click="SizeListButton_Click" ToolTip="Compact single-line list view"
+                                        Padding="4,2" Background="#1effffff" Foreground="#88ffffff" FontSize="9" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,2,0">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+
+                                <Button x:Name="SizeTableButton" Content="Table" Click="SizeTableButton_Click" ToolTip="Multi-column table view"
+                                        Padding="4,2" Background="#1effffff" Foreground="#88ffffff" FontSize="9" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,2,0">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+
+                                <Button x:Name="SizeSmallButton" Content="S" Click="SizeSmallButton_Click" ToolTip="Compact cards"
+                                        Padding="4,2" Background="#1effffff" Foreground="#88ffffff" FontSize="9" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,2,0">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+
+                                <Button x:Name="SizeMediumButton" Content="M" Click="SizeMediumButton_Click" ToolTip="Medium cards (default)"
+                                        Padding="4,2" Background="#0084ff" Foreground="#ffffff" FontSize="9" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,2,0">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+
+                                <Button x:Name="SizeLargeButton" Content="L" Click="SizeLargeButton_Click" ToolTip="Expanded cards"
+                                        Padding="4,2" Background="#1effffff" Foreground="#88ffffff" FontSize="9" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,2,0">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+
+                                <Button x:Name="ViewTasksButton" Content="Tasks" Click="ViewTasksButton_Click" ToolTip="Global action items &amp; task digest"
+                                        Padding="4,2" Background="#1effffff" Foreground="#88ffffff" FontSize="9" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Saved Smart View Presets Bar -->
+                        <Border x:Name="SavedPresetsContainer" Margin="0,5,0,0" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="⚡ Presets:" Foreground="#66FFFFFF" FontSize="9" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                    <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHorizontalScrollBar}"/></ScrollViewer.Resources>
+                                    <StackPanel x:Name="SavedPresetsStackPanel" Orientation="Horizontal"/>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Quick Category Jump Rail -->
+                        <Border x:Name="CategoryJumpRailContainer" Margin="0,4,0,0">
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHorizontalScrollBar}"/></ScrollViewer.Resources>
+                                <StackPanel x:Name="CategoryJumpRailPanel" Orientation="Horizontal"/>
+                            </ScrollViewer>
+                        </Border>
+
+                        <!-- Activity Heatmap Container -->
+                        <Border x:Name="HeatmapContainer" Background="#0EFFFFFF" BorderBrush="#14FFFFFF" BorderThickness="1" CornerRadius="6" Padding="6,5" Margin="0,5,0,0" Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="📊 Activity (Last 10 Weeks)" Foreground="#99FFFFFF" FontSize="9" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="HeatmapStatsText" Text="" Foreground="#66FFFFFF" FontSize="8.5" Margin="6,0,0,0"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="✕" Click="CloseHeatmap_Click" ToolTip="Hide heatmap"
+                                            Background="Transparent" BorderThickness="0" Foreground="#66FFFFFF" FontSize="9" Width="14" Height="14" Cursor="Hand"/>
+                                </Grid>
+
+                                <!-- 10-week grid (Mon-Sun rows x 10 week columns) -->
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                    <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHorizontalScrollBar}"/></ScrollViewer.Resources>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <StackPanel Orientation="Vertical" Margin="0,0,4,0" VerticalAlignment="Center">
+                                            <TextBlock Text="M" Foreground="#44FFFFFF" FontSize="7.5" Height="11"/>
+                                            <TextBlock Text="W" Foreground="#44FFFFFF" FontSize="7.5" Height="11" Margin="0,7,0,0"/>
+                                            <TextBlock Text="F" Foreground="#44FFFFFF" FontSize="7.5" Height="11" Margin="0,7,0,0"/>
+                                        </StackPanel>
+                                        <Grid x:Name="HeatmapGrid" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                </ScrollViewer>
+
+                                <!-- Active Date Filter Pill -->
+                                <Border x:Name="HeatmapFilterPill" Background="#260084FF" BorderBrush="#0084ff" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="0,4,0,0" Visibility="Collapsed" HorizontalAlignment="Left">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HeatmapFilterPillText" Text="Filtering: Aug 26, 2026" Foreground="#ffffff" FontSize="9" VerticalAlignment="Center"/>
+                                        <Button Content="✕" Click="ClearHeatmapDateFilter_Click" ToolTip="Clear date filter"
+                                                Background="Transparent" BorderThickness="0" Foreground="#ffffff" FontSize="8.5" Width="14" Height="14" Cursor="Hand" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Multi-select Tag Matrix Drawer -->
+                        <Border x:Name="TagMatrixDrawer" Background="#14FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="6" Padding="6,5" Margin="0,5,0,0" Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="🏷️ Tag Matrix" Foreground="#aaffffff" FontSize="9" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="TagMatrixModeButton" Content="Mode: ANY (OR)" Click="TagMatrixModeButton_Click" ToolTip="Toggle between matching ANY tag or ALL tags"
+                                            Background="#18FFFFFF" Foreground="#88FFFFFF" FontSize="8.5" Padding="5,1" BorderThickness="0" Cursor="Hand" Margin="0,0,4,0">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                    </Button>
+                                    <Button Grid.Column="2" Content="✕" Click="CloseTagMatrix_Click" ToolTip="Close Tag Matrix"
+                                            Background="Transparent" BorderThickness="0" Foreground="#88FFFFFF" FontSize="9" Width="14" Height="14" Cursor="Hand"/>
+                                </Grid>
+
+                                <!-- Tag Search Input -->
+                                <Border Background="#18000000" CornerRadius="4" BorderBrush="#20ffffff" BorderThickness="1" Padding="5,2" Margin="0,0,0,4">
+                                    <TextBox x:Name="TagMatrixSearchBox" TextChanged="TagMatrixSearchBox_TextChanged"
+                                             Background="Transparent" Foreground="White" BorderThickness="0" FontSize="9.5" CaretBrush="White"/>
+                                </Border>
+
+                                <!-- Tags Wrap Panel -->
+                                <ScrollViewer MaxHeight="80" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinVerticalScrollBar}"/></ScrollViewer.Resources>
+                                    <WrapPanel x:Name="TagMatrixWrapPanel"/>
+                                </ScrollViewer>
+
+                                <!-- Action buttons -->
+                                <Grid Margin="0,4,0,0">
+                                    <Button HorizontalAlignment="Left" Content="Clear All" Click="ClearAllTagsFilter_Click"
+                                            Background="Transparent" Foreground="#ff8080" FontSize="8.5" BorderThickness="0" Cursor="Hand"/>
+                                    <Button HorizontalAlignment="Right" Content="Apply" Click="ApplyTagMatrix_Click"
+                                            Background="#0084ff" Foreground="White" FontSize="8.5" FontWeight="SemiBold" Padding="8,2" BorderThickness="0" Cursor="Hand">
+                                        <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="3"/></Style></Button.Resources>
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </Border>
 
-                <!-- ================= SORT Section (Row 3): Sort by / Card size ================= -->
-                <Border Grid.Row="3" Style="{StaticResource SidebarSectionBoundary}">
-                <StackPanel>
-                    <TextBlock Text="SORT &amp; VIEW" Style="{StaticResource SidebarSectionLabel}"/>
-
-                    <!-- Sort Options Row -->
-                    <Grid x:Name="SortPanel">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock Text="Sort by:" Foreground="#88ffffff" FontSize="10.5" VerticalAlignment="Center"/>
-
-                        <!-- Sort by Category Button -->
-                        <Button Grid.Column="2" x:Name="SortCategoryButton" Content="Category" Click="SortCategoryButton_Click" Margin="6,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="4"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-
-                        <!-- Sort by Date Button -->
-                        <Button Grid.Column="3" x:Name="SortDateButton" Content="Date (Newest)" Click="SortDateButton_Click" Margin="4,0,0,0" Padding="8,2" Background="#0084ff" Foreground="#ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="4"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-
-                        <!-- Expand/collapse every category group at once - only relevant in Category sort mode -->
-                        <Button Grid.Column="4" x:Name="ExpandCollapseAllButton" Content="Collapse All" Click="ExpandCollapseAllButton_Click"
-                                Margin="4,0,0,0" Padding="8,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" BorderThickness="0" Cursor="Hand"
-                                Visibility="Collapsed">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="4"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-                    </Grid>
-
-                    <!-- Card Size Options Row -->
-                    <Grid x:Name="ViewSizePanel" Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock Text="Card size:" Foreground="#88ffffff" FontSize="10.5" VerticalAlignment="Center"/>
-
-                        <!-- Small cards -->
-                        <Button Grid.Column="2" x:Name="SizeSmallButton" Content="S" Click="SizeSmallButton_Click" ToolTip="Compact cards" Margin="6,0,0,0" Padding="10,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="4"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-
-                        <!-- Medium cards (default) -->
-                        <Button Grid.Column="3" x:Name="SizeMediumButton" Content="M" Click="SizeMediumButton_Click" ToolTip="Medium cards (default)" Margin="4,0,0,0" Padding="10,2" Background="#0084ff" Foreground="#ffffff" FontSize="9.5" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="4"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-
-                        <!-- Large cards -->
-                        <Button Grid.Column="4" x:Name="SizeLargeButton" Content="L" Click="SizeLargeButton_Click" ToolTip="Expanded cards" Margin="4,0,0,0" Padding="10,2" Background="#20ffffff" Foreground="#88ffffff" FontSize="9.5" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="4"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-                    </Grid>
-                </StackPanel>
-                </Border>
-
-                <!-- Stale Notes Digest Banner (Row 4) -->
-                <Border x:Name="StaleNotesBanner" Grid.Row="4" Margin="0,0,0,12" Padding="10,8" CornerRadius="8"
+                <!-- Stale Notes Digest Banner (Row 3) -->
+                <Border x:Name="StaleNotesBanner" Grid.Row="3" Margin="0,0,0,8" Padding="10,6" CornerRadius="6"
                         Background="#1affa500" BorderBrush="#ffa500" BorderThickness="1" Visibility="Collapsed">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -767,19 +1051,18 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" x:Name="StaleNotesText" Text="⏰ 0 notes have open tasks untouched for a while"
-                                   Foreground="#ffcc80" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Foreground="#ffcc80" FontSize="10.5" TextWrapping="Wrap" VerticalAlignment="Center"
                                    Cursor="Hand" MouseLeftButtonUp="StaleNotesBanner_Click"/>
                         <Button Grid.Column="1" Content="✕" Click="DismissStaleNotesBanner_Click" ToolTip="Dismiss for this session"
                                 Background="Transparent" BorderThickness="0" Foreground="#ffcc80"
-                                Width="20" Height="20" FontSize="10" Cursor="Hand" VerticalAlignment="Top" Margin="6,0,0,0"/>
+                                Width="18" Height="18" FontSize="9.5" Cursor="Hand" VerticalAlignment="Center" Margin="4,0,0,0"/>
                     </Grid>
                 </Border>
 
-
-                <!-- Notes List (Row 5) - flat, virtualized: only on-screen rows (group headers + note cards)
+                <!-- Notes List (Row 4) - flat, virtualized: only on-screen rows (group headers + note cards)
                      are realized, regardless of how many notes exist. Collapsed groups simply aren't
                      included in the bound ItemsSource, so no separate expand/collapse animation is needed. -->
-                <ListBox x:Name="NotesListBox" Grid.Row="5"
+                <ListBox x:Name="NotesListBox" Grid.Row="4"
                          Background="Transparent" BorderThickness="0" Padding="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -797,17 +1080,18 @@
                     </ListBox.Resources>
                 </ListBox>
 
-<Border x:Name="StatusToast" Visibility="Collapsed"
-        Background="#DD0a0a0a" BorderBrush="#0084ff" BorderThickness="1"
-        CornerRadius="8" Padding="14,10" Margin="12"
-        VerticalAlignment="Bottom" HorizontalAlignment="Stretch">
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-        <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
-        <TextBlock x:Name="StatusToastText" Text="Processing..."
-                   Foreground="#ffffff" FontSize="12" VerticalAlignment="Center"/>
-    </StackPanel>
-</Border>
-</Grid>
-</Border>
+                <Border x:Name="StatusToast" Visibility="Collapsed"
+                        Background="#DD0a0a0a" BorderBrush="#0084ff" BorderThickness="1"
+                        CornerRadius="8" Padding="14,10" Margin="12"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Stretch">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StatusToastText" Text="Processing..."
+                                   Foreground="#ffffff" FontSize="12" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
 </Window>
 

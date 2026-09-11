@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
@@ -51,11 +51,72 @@ namespace StickyNotes__
                     if (SettingsService.Current.ReserveScreenSpace)
                     {
                         RegisterAppBar();
-                        SetAppBarPosition(350);
+                        SetAppBarPosition((int)SidebarWidth);
                         this.Topmost = false;
                     }
                 }
             };
+        }
+
+        public double SidebarWidth
+        {
+            get => this.Width > 200 ? this.Width : (SettingsService.Current.SidebarWidth > 200 ? SettingsService.Current.SidebarWidth : 350);
+            set => this.Width = value;
+        }
+
+        private bool _isResizingWidth;
+        private Point _resizeStartScreenPoint;
+        private double _resizeStartWidth;
+
+        private void LeftResizeGrip_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed && sender is UIElement elem)
+            {
+                _isResizingWidth = true;
+                _resizeStartScreenPoint = PointToScreen(e.GetPosition(this));
+                _resizeStartWidth = this.Width;
+                elem.CaptureMouse();
+                e.Handled = true;
+            }
+        }
+
+        private void LeftResizeGrip_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isResizingWidth)
+            {
+                Point current = PointToScreen(e.GetPosition(this));
+                double delta = _resizeStartScreenPoint.X - current.X;
+                double newWidth = Math.Clamp(_resizeStartWidth + delta, 280, 700);
+                ApplySidebarWidth(newWidth);
+                e.Handled = true;
+            }
+        }
+
+        private void LeftResizeGrip_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isResizingWidth)
+            {
+                _isResizingWidth = false;
+                if (sender is UIElement elem) elem.ReleaseMouseCapture();
+
+                var config = SettingsService.Current;
+                config.SidebarWidth = this.Width;
+                SettingsService.Save(config);
+                e.Handled = true;
+            }
+        }
+
+        public void ApplySidebarWidth(double newWidth)
+        {
+            newWidth = Math.Clamp(newWidth, 280, 700);
+            this.Width = newWidth;
+            double screenWidth = SystemParameters.PrimaryScreenWidth;
+            this.Left = screenWidth - newWidth;
+
+            if (SettingsService.Current.ReserveScreenSpace && _isAppBarRegistered && !_isAnimating)
+            {
+                SetAppBarPosition((int)newWidth);
+            }
         }
 
         public void PeekSidebar()
@@ -72,12 +133,12 @@ namespace StickyNotes__
 
             double screenWidth = SystemParameters.PrimaryScreenWidth;
             double screenHeight = SystemParameters.PrimaryScreenHeight;
-            double targetLeft = screenWidth - 350;
+            double targetLeft = screenWidth - SidebarWidth;
 
             this.WindowState = WindowState.Normal;
             this.Top = 0;
             this.Height = screenHeight;
-            this.Width = 350;
+            this.Width = SidebarWidth;
             this.Left = screenWidth;
             this.Topmost = true;
             this.Show();
@@ -112,12 +173,12 @@ namespace StickyNotes__
 
             double screenWidth = SystemParameters.PrimaryScreenWidth;
             double screenHeight = SystemParameters.PrimaryScreenHeight;
-            double targetLeft = screenWidth - 350;
+            double targetLeft = screenWidth - SidebarWidth;
 
             this.WindowState = WindowState.Normal;
             this.Top = 0;
             this.Height = screenHeight;
-            this.Width = 350;
+            this.Width = SidebarWidth;
 
             if (!animate)
             {
@@ -127,7 +188,7 @@ namespace StickyNotes__
                 if (SettingsService.Current.ReserveScreenSpace)
                 {
                     RegisterAppBar();
-                    SetAppBarPosition(350);
+                    SetAppBarPosition((int)SidebarWidth);
                     this.Topmost = false;
                 }
                 else
@@ -161,7 +222,7 @@ namespace StickyNotes__
                 if (SettingsService.Current.ReserveScreenSpace)
                 {
                     RegisterAppBar();
-                    SetAppBarPosition(350);
+                    SetAppBarPosition((int)SidebarWidth);
                     this.Topmost = false;
                 }
                 else
@@ -246,9 +307,9 @@ namespace StickyNotes__
         {
             double screenWidth = SystemParameters.PrimaryScreenWidth;
             double screenHeight = SystemParameters.PrimaryScreenHeight;
-            this.Left = screenWidth - 350;
+            this.Left = screenWidth - SidebarWidth;
             this.Top = 0;
-            this.Width = 350;
+            this.Width = SidebarWidth;
             this.Height = screenHeight;
             this.Topmost = true;
         }
@@ -264,7 +325,7 @@ namespace StickyNotes__
                 if (SettingsService.Current.ReserveScreenSpace && !_isAppBarRegistered)
                 {
                     RegisterAppBar();
-                    SetAppBarPosition(350);
+                    SetAppBarPosition((int)SidebarWidth);
                     this.Topmost = false;
                 }
                 else if (!SettingsService.Current.ReserveScreenSpace && _isAppBarRegistered)

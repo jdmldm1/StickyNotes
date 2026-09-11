@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -658,6 +658,17 @@ namespace StickyNotes__
             return null;
         }
 
+        public static int GetNoteCount()
+        {
+            using (var conn = new SqliteConnection(GetConnectionString()))
+            {
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(*) FROM notes;";
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+        }
+
         public static List<Note> ListNotes(string? searchQuery = null, string? tagFilter = null, string? categoryFilter = null, DateTime? updatedSince = null, bool includeContent = false)
         {
             var notes = new List<Note>();
@@ -756,8 +767,8 @@ namespace StickyNotes__
                             IsTemplate = ordIsTemplate >= 0 && !reader.IsDBNull(ordIsTemplate) && reader.GetInt32(ordIsTemplate) == 1,
                             IsSecure = ordIsSecure >= 0 && !reader.IsDBNull(ordIsSecure) && reader.GetInt32(ordIsSecure) == 1,
                             Classification = ordClassification >= 0 && !reader.IsDBNull(ordClassification) ? reader.GetString(ordClassification) : null,
-                            CreatedAt = ordCreatedAt >= 0 && !reader.IsDBNull(ordCreatedAt) ? DateTime.Parse(reader.GetString(ordCreatedAt)) : DateTime.MinValue,
-                            UpdatedAt = ordUpdatedAt >= 0 && !reader.IsDBNull(ordUpdatedAt) ? DateTime.Parse(reader.GetString(ordUpdatedAt)) : DateTime.MinValue
+                            CreatedAt = ordCreatedAt >= 0 && !reader.IsDBNull(ordCreatedAt) ? ParseSqliteDateTime(reader.GetString(ordCreatedAt)) : DateTime.MinValue,
+                            UpdatedAt = ordUpdatedAt >= 0 && !reader.IsDBNull(ordUpdatedAt) ? ParseSqliteDateTime(reader.GetString(ordUpdatedAt)) : DateTime.MinValue
                         });
                     }
                 }
@@ -1446,10 +1457,96 @@ namespace StickyNotes__
                     IsTemplate = OrdIsTemplate >= 0 && !reader.IsDBNull(OrdIsTemplate) && reader.GetInt32(OrdIsTemplate) == 1,
                     IsSecure = OrdIsSecure >= 0 && !reader.IsDBNull(OrdIsSecure) && reader.GetInt32(OrdIsSecure) == 1,
                     Classification = OrdClassification >= 0 && !reader.IsDBNull(OrdClassification) ? reader.GetString(OrdClassification) : null,
-                    CreatedAt = OrdCreatedAt >= 0 && !reader.IsDBNull(OrdCreatedAt) && DateTime.TryParse(reader.GetString(OrdCreatedAt), out var cat) ? cat : DateTime.MinValue,
-                    UpdatedAt = OrdUpdatedAt >= 0 && !reader.IsDBNull(OrdUpdatedAt) && DateTime.TryParse(reader.GetString(OrdUpdatedAt), out var uat) ? uat : DateTime.MinValue
+                    CreatedAt = OrdCreatedAt >= 0 && !reader.IsDBNull(OrdCreatedAt) ? ParseSqliteDateTime(reader.GetString(OrdCreatedAt)) : DateTime.MinValue,
+                    UpdatedAt = OrdUpdatedAt >= 0 && !reader.IsDBNull(OrdUpdatedAt) ? ParseSqliteDateTime(reader.GetString(OrdUpdatedAt)) : DateTime.MinValue
                 };
             }
+        }
+
+        public static DateTime ParseSqliteDateTime(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return DateTime.MinValue;
+            if (DateTime.TryParse(raw, out var dt))
+            {
+                if (dt.Kind == DateTimeKind.Utc) return dt.ToLocalTime();
+                if (dt.Kind == DateTimeKind.Unspecified)
+                {
+                    // SQLite CURRENT_TIMESTAMP is stored in UTC format without timezone offset
+                    return DateTime.SpecifyKind(dt, DateTimeKind.Utc).ToLocalTime();
+                }
+                return dt;
+            }
+            return DateTime.MinValue;
+        }
+
+        public static Dictionary<string, int> GetDailyActivityHeatmap(DateTime startDate, DateTime endDate)
+        {
+            var map = new Dictionary<string, int>();
+            try
+            {
+                using (var conn = new SqliteConnection(GetConnectionString()))
+                {
+                    conn.Open();
+                    var cmd = conn.CreateCommand();
+                    cmd.CommandText = "SELECT updated_at FROM notes;";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            if (!reader.IsDBNull(0))
+                            {
+                                var localDt = ParseSqliteDateTime(reader.GetString(0));
+                                if (localDt.Date >= startDate.Date && localDt.Date <= endDate.Date)
+                                {
+                                    string key = localDt.ToString("yyyy-MM-dd");
+                                    map[key] = map.TryGetValue(key, out int count) ? count + 1 : 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GetDailyActivityHeatmap error: " + ex.Message);
+            }
+            return map;
+        }
+
+        public static bool ToggleTaskInNote(int noteId, int lineIndex, bool isChecked)
+        {
+            try
+            {
+                var note = GetNote(noteId);
+                if (note == null) return false;
+
+                string text = note.PlainText;
+                var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+                if (lineIndex >= 0 && lineIndex < lines.Length)
+                {
+                    string line = lines[lineIndex];
+                    if (isChecked)
+                    {
+                        if (line.Contains("[ ]")) line = line.Replace("[ ]", "[x]");
+                        else if (line.Contains("[]")) line = line.Replace("[]", "[x]");
+                    }
+                    else
+                    {
+                        if (line.Contains("[x]")) line = line.Replace("[x]", "[ ]");
+                        else if (line.Contains("[X]")) line = line.Replace("[X]", "[ ]");
+                    }
+                    lines[lineIndex] = line;
+                    note.PlainText = string.Join(Environment.NewLine, lines);
+                    note.Content = note.PlainText;
+                    UpdateNote(note);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("ToggleTaskInNote error: " + ex.Message);
+            }
+            return false;
         }
 
         private static Note ReadNote(SqliteDataReader reader)
